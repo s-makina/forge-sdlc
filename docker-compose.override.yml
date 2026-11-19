@@ -1,0 +1,13 @@
+services:
+  api:
+    volumes:
+      - ./apps/api:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  dashboard:
+    volumes:
+      - ./apps/dashboard:/app/apps/dashboard
+      - /app/apps/dashboard/node_modules
+      - /app/apps/dashboard/.next
+    working_dir: /app/apps/dashboard
+    command: pnpm dev
