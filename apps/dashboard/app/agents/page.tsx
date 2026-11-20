@@ -1,10 +1,69 @@
-import { PlaceholderPage } from "@/components/placeholder-page";
+import { api, type Agent, type ListResponse } from "@/lib/api";
 
-export default function Agents() {
+export const dynamic = "force-dynamic";
+
+const STATUS_LABEL: Record<string, string> = {
+  draft: "Draft",
+  candidate: "Candidate",
+  active: "Active",
+  retired: "Retired",
+};
+
+export default async function AgentsPage() {
+  let agents: Agent[] = [];
+  let error = false;
+  try {
+    const res = await api<ListResponse<Agent>>("/agents");
+    agents = res.items;
+  } catch {
+    error = true;
+  }
+
   return (
-    <PlaceholderPage
-      title="Agent Registry"
-      note="Agent registry, roles, versions, skills, tools, model profiles, and performance. (Phase 2)"
-    />
+    <div>
+      <h1>Agent Registry</h1>
+      {error ? (
+        <p className="error">Unable to load agents (is the API running?).</p>
+      ) : (
+        <div>
+          {agents.map((agent) => {
+            const active = agent.versions.find((v) => v.status === "active");
+            return (
+              <div className="card" key={agent.id}>
+                <h2>
+                  {agent.name} <span className="badge">{agent.role}</span>
+                </h2>
+                {active ? (
+                  <p>
+                    Active version{" "}
+                    <span className="badge">
+                      v{active.version} · {active.model_profile}
+                    </span>
+                  </p>
+                ) : (
+                  <p className="placeholder">No active version.</p>
+                )}
+                <ul className="list">
+                  {agent.versions.map((version) => (
+                    <li key={version.id}>
+                      <span className="badge">
+                        {STATUS_LABEL[version.status] ?? version.status}
+                      </span>{" "}
+                      v{version.version} · {version.model_profile}
+                      <span className="placeholder">
+                        {" "}
+                        · {version.capabilities.join(", ") || "no capabilities"}
+                      </span>
+                    </li>
+                  ))}
+                  {agent.versions.length === 0 && <li className="placeholder">No versions yet.</li>}
+                </ul>
+              </div>
+            );
+          })}
+          {agents.length === 0 && <p className="placeholder">No agents registered.</p>}
+        </div>
+      )}
+    </div>
   );
 }

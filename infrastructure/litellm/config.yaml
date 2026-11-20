@@ -1,0 +1,17 @@
+# ForgeSDLC model gateway (LiteLLM proxy).
+#
+# The platform treats the database as the source of truth for providers and
+# models. Use the API endpoint GET /api/v1/models/gateway/config.yaml to render
+# the current gateway configuration and mount the result here, or edit this file
+# by hand while getting started:
+#
+#   model_list: a list of OpenAI-compatible endpoints. Each entry is:
+#     - model_name: the public name clients request
+#     - litellm_params:
+#         model:   "<provider-prefix>/<model-name>"
+#                  (ollama_chat/ for Ollama, openai/ for OpenAI-compatible)
+#         api_base: provider base URL
+#         api_key: "os.environ/NAME" to read a secret from the environment
+#
+# Secrets are never written here; api_key always references the environment.
+model_list: []

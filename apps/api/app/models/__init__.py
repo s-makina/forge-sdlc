@@ -1,7 +1,37 @@
 """ORM models package. Import all models so Alembic autogenerate sees them."""
 
+from app.models.agent import Agent, AgentSkill, AgentStatus, AgentToolPermission, AgentVersion
 from app.models.audit import AuditLog
+from app.models.model_provider import (
+    CheckKind,
+    Model,
+    ModelProfile,
+    ModelProvider,
+    ProviderCheck,
+    ProviderType,
+    UsageRecord,
+)
 from app.models.project import Project, Repository
+from app.models.registry import Skill, Tool
 from app.models.user import User
 
-__all__ = ["AuditLog", "Project", "Repository", "User"]
+__all__ = [
+    "Agent",
+    "AgentSkill",
+    "AgentStatus",
+    "AgentToolPermission",
+    "AgentVersion",
+    "AuditLog",
+    "CheckKind",
+    "Model",
+    "ModelProfile",
+    "ModelProvider",
+    "Project",
+    "ProviderCheck",
+    "ProviderType",
+    "Repository",
+    "Skill",
+    "Tool",
+    "UsageRecord",
+    "User",
+]

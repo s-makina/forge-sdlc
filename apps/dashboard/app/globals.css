@@ -103,3 +103,44 @@ ul.list li {
   color: #c53030;
   padding: 0.5rem 0;
 }
+.muted {
+  color: #718096;
+  font-size: 0.9rem;
+}
+
+.badge.ok {
+  background: #c6f6d5;
+  color: #22543d;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.5rem;
+}
+
+table th,
+table td {
+  text-align: left;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid #edf2f7;
+  font-size: 0.9rem;
+}
+
+table th {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #718096;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+}
+
+h3 {
+  font-size: 0.95rem;
+  margin-bottom: 0.4rem;
+}
