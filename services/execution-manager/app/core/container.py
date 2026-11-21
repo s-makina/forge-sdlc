@@ -8,16 +8,26 @@ from typing import cast
 from app.core.config import Settings, get_settings
 from app.docker.client import DockerClient, DockerSdkClient
 from app.openhands.client import CodingRuntime, OpenHandsSdkRuntime
+from app.storage.client import MemoryObjectStore, ObjectStore, S3ObjectStore
+
+
+def _build_object_store(settings: Settings) -> ObjectStore:
+    """Return the configured object store (S3 when a bucket is set, else memory)."""
+    if settings.artifact_bucket:
+        return S3ObjectStore(settings)
+    return MemoryObjectStore()
 
 
 class Container:
-    """Holds process-wide singletons (settings, docker client)."""
+    """Holds process-wide singletons (settings, docker client, object store)."""
 
     def __init__(self) -> None:
+        settings = get_settings()
         self._singletons: dict[str, object] = {
-            "settings": get_settings(),
+            "settings": settings,
             "docker_client": DockerSdkClient(),
-            "coding_runtime": OpenHandsSdkRuntime(base_url=get_settings().openhands_base_url),
+            "coding_runtime": OpenHandsSdkRuntime(base_url=settings.openhands_base_url),
+            "object_store": _build_object_store(settings),
         }
 
     def register(self, name: str, instance: object) -> None:
@@ -39,6 +49,10 @@ class Container:
     @property
     def coding_runtime(self) -> CodingRuntime:
         return cast(CodingRuntime, self.resolve("coding_runtime"))
+
+    @property
+    def object_store(self) -> ObjectStore:
+        return cast(ObjectStore, self.resolve("object_store"))
 
 
 @lru_cache

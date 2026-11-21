@@ -15,21 +15,26 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings
 from app.docker.client import ContainerSpec, DockerClient
 from app.models.execution import Execution, ExecutionStatus
-from app.services import executions
+from app.services import executions, policies
 
 
 def build_spec(execution: Execution, settings: Settings, mounts: list[dict[str, str]] | None = None) -> ContainerSpec:
-    """Build the container spec for an execution's workspace."""
-    allowlist = [h.strip() for h in settings.workspace_network_allowlist.split(",") if h.strip()]
+    """Build the container spec for an execution's workspace.
+
+    The resource and network limits are taken from the resolved policy
+    (subphase 3.6), which enforces non-root execution and the package-registry
+    allowlist.
+    """
+    policy = policies.resolve_policy(execution, settings)
     return ContainerSpec(
         name=f"forgesdlc-exec-{execution.execution_id}",
-        image=execution.image,
+        image=policy.image,
         working_dir="/workspace",
-        cpu_limit=execution.cpu_limit,
-        memory_limit=execution.memory_limit,
-        disk_limit=execution.disk_limit,
-        network_policy=execution.network_policy,
-        network_allowlist=allowlist,
+        cpu_limit=policy.cpu_limit,
+        memory_limit=policy.memory_limit,
+        disk_limit=policy.disk_limit,
+        network_policy=policy.network_policy,
+        network_allowlist=policy.network_allowlist,
         environment={
             "EXECUTION_ID": execution.execution_id,
             "PROJECT_ID": str(execution.project_id),
@@ -53,6 +58,7 @@ def provision_workspace(
     """
     try:
         spec = build_spec(execution, settings, mounts=mounts)
+        policies.validate_spec(spec)
         container_id = docker.create_container(spec)
         docker.start_container(container_id)
         execution.container_id = container_id

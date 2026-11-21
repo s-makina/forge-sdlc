@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     # OpenHands (Phase 3 placeholder)
     openhands_base_url: str = ""
 
+    # Workflow orchestration (Phase 4)
+    workflow_timeout_seconds: int = 3600
+    workflow_max_retries: int = 3
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -13,7 +13,14 @@ from app.models.model_provider import (
 )
 from app.models.project import Project, Repository
 from app.models.registry import Skill, Tool
+from app.models.task import Task, TaskDependency, TaskPriority, TaskStatus, TaskType
 from app.models.user import User
+from app.models.workflow import (
+    WorkflowStage,
+    WorkflowTemplate,
+    WorkflowTemplateCategory,
+)
+from app.models.workflow_instance import Workflow, WorkflowStageRun, WorkflowStatus
 
 __all__ = [
     "Agent",
@@ -31,7 +38,18 @@ __all__ = [
     "ProviderType",
     "Repository",
     "Skill",
+    "Task",
+    "TaskDependency",
+    "TaskPriority",
+    "TaskStatus",
+    "TaskType",
     "Tool",
     "UsageRecord",
     "User",
+    "Workflow",
+    "WorkflowStage",
+    "WorkflowStageRun",
+    "WorkflowStatus",
+    "WorkflowTemplate",
+    "WorkflowTemplateCategory",
 ]

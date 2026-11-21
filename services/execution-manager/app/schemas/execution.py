@@ -32,6 +32,7 @@ class ExecutionRead(BaseModel):
     session_id: str | None
     error_message: str | None
     image: str
+    adapter_name: str | None
     cpu_limit: float
     memory_limit: str
     disk_limit: str
@@ -59,6 +60,7 @@ class ExecutionStatusRead(BaseModel):
 class ExecutionLogEntry(BaseModel):
     sequence: int
     timestamp: datetime
+    kind: str
     level: str
     message: str
 
@@ -72,6 +74,8 @@ class ExecutionArtefact(BaseModel):
     name: str
     location: str
     size_bytes: int
+    mime_type: str | None = None
+    kind: str | None = None
 
 
 class ExecutionArtefactsRead(BaseModel):

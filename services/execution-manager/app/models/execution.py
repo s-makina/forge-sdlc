@@ -52,6 +52,7 @@ class Execution(Base, TimestampMixin):
 
     # Workspace policies (README §12.2 / §12.3).
     image: Mapped[str] = mapped_column(String(255), nullable=False)
+    adapter_name: Mapped[str | None] = mapped_column(String(64))
     cpu_limit: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     memory_limit: Mapped[str] = mapped_column(String(32), nullable=False, default="1g")
     disk_limit: Mapped[str] = mapped_column(String(32), nullable=False, default="2g")

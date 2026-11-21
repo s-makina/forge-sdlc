@@ -179,6 +179,32 @@ services:
       timeout: 5s
       retries: 10
 
+  orchestrator:
+    build:
+      context: ./services/orchestrator
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      CONTROL_PLANE_URL: ${CONTROL_PLANE_URL:-http://api:8000}
+      TEMPORAL_HOST: ${TEMPORAL_HOST:-temporal:7233}
+      TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
+      TEMPORAL_TASK_QUEUE: ${TEMPORAL_TASK_QUEUE:-forgesdlc-workflows}
+    ports:
+      - "${ORCHESTRATOR_PORT:-8002}:8002"
+    depends_on:
+      temporal:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          'python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen(''http://localhost:8002/health'').status==200 else 1)"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
 volumes:
   postgres_data:
   redis_data:

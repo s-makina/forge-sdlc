@@ -7,6 +7,7 @@ from fastapi import Depends
 from app.core.container import Container, get_container
 from app.docker.client import DockerClient
 from app.openhands.client import CodingRuntime
+from app.storage.client import ObjectStore
 
 
 def get_container_dep() -> Container:
@@ -26,3 +27,10 @@ def get_coding_runtime(
 ) -> CodingRuntime:
     """Return the OpenHands coding runtime singleton (overridable in tests)."""
     return container.coding_runtime
+
+
+def get_object_store(
+    container: Container = Depends(get_container_dep),
+) -> ObjectStore:
+    """Return the object-store singleton (overridable in tests)."""
+    return container.object_store

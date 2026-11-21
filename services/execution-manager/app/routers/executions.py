@@ -10,21 +10,23 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.session import get_db
-from app.deps.container import get_coding_runtime, get_docker_client
+from app.deps.container import get_coding_runtime, get_docker_client, get_object_store
 from app.docker.client import DockerClient
 from app.models.execution import Execution, ExecutionStatus
 from app.openhands.client import CodingRuntime
+from app.storage.client import ObjectStore
 from app.schemas.execution import (
     ExecutionArtefactsRead,
     ExecutionCancelRead,
     ExecutionCleanupRead,
     ExecutionCreate,
     ExecutionList,
+    ExecutionLogEntry,
     ExecutionLogsRead,
     ExecutionRead,
     ExecutionStatusRead,
 )
-from app.services import executions, executor, repository, runtime
+from app.services import events, executions, executor, repository, runtime, terminal
 
 router = APIRouter(prefix="/executions", tags=["executions"])
 
@@ -75,6 +77,17 @@ def start_session(
     return ExecutionRead.model_validate(execution)
 
 
+@router.post("/{execution_id}/test", response_model=ExecutionRead)
+def run_test_suite(
+    execution_id: str,
+    db: Session = Depends(get_db),
+    docker: DockerClient = Depends(get_docker_client),
+) -> ExecutionRead:
+    execution = _get_execution_or_404(db, execution_id)
+    _, execution = terminal.run_tests(db, docker, execution)
+    return ExecutionRead.model_validate(execution)
+
+
 @router.get("", response_model=ExecutionList)
 def list_executions(
     project_id: int | None = None, db: Session = Depends(get_db)
@@ -97,15 +110,28 @@ def get_status(execution_id: str, db: Session = Depends(get_db)) -> ExecutionSta
 @router.get("/{execution_id}/logs", response_model=ExecutionLogsRead)
 def get_logs(execution_id: str, db: Session = Depends(get_db)) -> ExecutionLogsRead:
     _get_execution_or_404(db, execution_id)
-    # Log capture is implemented in Phase 3.7.
-    return ExecutionLogsRead(execution_id=execution_id, entries=[])
+    rows = events.list_events(db, execution_id)
+    entries = [
+        ExecutionLogEntry(
+            sequence=row.sequence,
+            timestamp=row.occurred_at,
+            kind=row.kind,
+            level=row.level,
+            message=row.message,
+        )
+        for row in rows
+    ]
+    return ExecutionLogsRead(execution_id=execution_id, entries=entries)
 
 
 @router.get("/{execution_id}/artefacts", response_model=ExecutionArtefactsRead)
 def get_artefacts(execution_id: str, db: Session = Depends(get_db)) -> ExecutionArtefactsRead:
     _get_execution_or_404(db, execution_id)
-    # Artefact storage is implemented in Phase 3.7.
-    return ExecutionArtefactsRead(execution_id=execution_id, artefacts=[])
+    artefacts = events.list_artefacts(db, execution_id)
+    return ExecutionArtefactsRead(
+        execution_id=execution_id,
+        artefacts=[ExecutionArtefact.model_validate(a) for a in artefacts],
+    )
 
 
 @router.post("/{execution_id}/cancel", response_model=ExecutionCancelRead)
@@ -137,3 +163,16 @@ def cleanup_execution(
         )
     execution = executor.cleanup(db, execution, docker)
     return ExecutionCleanupRead(execution_id=execution_id, status=execution.status, cleaned=True)
+
+
+@router.post("/recover", response_model=ExecutionList)
+def recover_orphans_endpoint(
+    db: Session = Depends(get_db),
+    docker: DockerClient = Depends(get_docker_client),
+) -> ExecutionList:
+    """Recover orphaned executions left by a worker/infra failure (3.8)."""
+    recovered = executor.recover(db, docker, get_settings())
+    return ExecutionList(
+        items=[ExecutionRead.model_validate(e) for e in recovered],
+        total=len(recovered),
+    )

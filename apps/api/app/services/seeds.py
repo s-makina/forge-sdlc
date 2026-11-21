@@ -25,6 +25,7 @@ from app.models.registry import Skill, Tool
 from app.services.agent_definition import parse_definition_file
 from app.services.agent_registry import import_definition
 from app.services.model_seed import seed_default_providers
+from app.services.workflows import seed_default_templates
 
 logger = logging.getLogger(__name__)
 
@@ -184,3 +185,4 @@ def seed_all(db: Session, settings: Settings) -> None:
     seed_default_providers(db, settings)
     seed_registries(db)
     seed_agents(db)
+    seed_default_templates(db)
