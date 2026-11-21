@@ -11,12 +11,16 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
 from app.models.base import TimestampMixin
+
+if TYPE_CHECKING:
+    from app.models.approval import PlanApproval
 
 
 class WorkflowStatus(StrEnum):
@@ -50,11 +54,13 @@ class Workflow(Base, TimestampMixin):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    stages: Mapped[list["WorkflowStageRun"]] = relationship(
+    stages: Mapped[list[WorkflowStageRun]] = relationship(
         back_populates="workflow",
         cascade="all, delete-orphan",
         order_by="WorkflowStageRun.position",
     )
+
+    approval: Mapped[PlanApproval | None] = relationship(back_populates="workflow")
 
 
 class WorkflowStageRun(Base):

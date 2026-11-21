@@ -115,6 +115,10 @@ def advance_workflow(db: Session, workflow: Workflow, timeout_seconds: int) -> W
     """
     if workflow.status == WorkflowStatus.CANCELLED.value:
         raise WorkflowCancelled("workflow is cancelled")
+    if workflow.status == WorkflowStatus.WAITING_APPROVAL.value:
+        # Plan-approval gate: development is blocked until an approved decision
+        # is recorded (FR-8). Do not run further stages.
+        return workflow
     if is_timed_out(workflow, time.time(), timeout_seconds):
         workflow.status = WorkflowStatus.FAILED.value
         workflow.finished_at = datetime.now(timezone.utc)
