@@ -11,9 +11,10 @@ to the execution-manager (Phase 4.4/4.6).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from app.execution.client import ExecutionManagerClient, ExecutionRequest
-from app.temporal.client import TemporalClient, WorkflowRun
+from app.temporal.client import FEATURE_DEVELOPMENT_WORKFLOW_NAME, TemporalClient, WorkflowRun
 
 
 @dataclass(frozen=True)
@@ -23,7 +24,7 @@ class WorkflowSubmission:
     workflow_id: int
     project_id: int
     template_slug: str
-    inputs: dict[str, object]
+    inputs: dict[str, Any]
 
     @property
     def durable_id(self) -> str:
@@ -61,7 +62,7 @@ class Orchestrator:
     def start(self, submission: WorkflowSubmission) -> WorkflowRun:
         """Submit a workflow instance to Temporal as a durable run."""
         return self._client.start_workflow(
-            name="forgesdlc_feature_development",
+            name=FEATURE_DEVELOPMENT_WORKFLOW_NAME,
             workflow_id=submission.durable_id,
             task_queue=self._task_queue,
             args=[submission],

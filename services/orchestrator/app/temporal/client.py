@@ -16,6 +16,10 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
 
+# Workflow name used when starting a durable run; matches the decorated Temporal
+# workflow in ``app.temporal.worker``.
+FEATURE_DEVELOPMENT_WORKFLOW_NAME = "forgesdlc_feature_development"
+
 
 @dataclass(frozen=True)
 class WorkflowRun:

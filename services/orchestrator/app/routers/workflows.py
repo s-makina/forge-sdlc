@@ -7,6 +7,8 @@ the control-plane workflow lifecycle.
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
@@ -20,7 +22,7 @@ class WorkflowStartRequest(BaseModel):
     workflow_id: int = Field(gt=0)
     project_id: int = Field(gt=0)
     template_slug: str = Field(min_length=1, max_length=64)
-    inputs: dict[str, object] = {}
+    inputs: dict[str, Any] = {}
 
 
 class WorkflowStatusResponse(BaseModel):
