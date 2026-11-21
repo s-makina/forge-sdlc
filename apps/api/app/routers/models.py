@@ -436,6 +436,24 @@ def record_usage(
     db: Session = Depends(get_db),
     _: User = Depends(require_user),
 ) -> UsageRead:
+    if payload.provider_id is not None and db.get(ModelProvider, payload.provider_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"provider {payload.provider_id} not found",
+        )
+    if payload.model_id is not None and db.get(Model, payload.model_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"model {payload.model_id} not found",
+        )
+    if payload.agent_version_id is not None:
+        from app.models.agent import AgentVersion
+
+        if db.get(AgentVersion, payload.agent_version_id) is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"agent_version {payload.agent_version_id} not found",
+            )
     record = UsageRecord(
         provider_id=payload.provider_id,
         model_id=payload.model_id,
@@ -443,7 +461,7 @@ def record_usage(
         agent_version_id=payload.agent_version_id,
         input_tokens=payload.input_tokens,
         output_tokens=payload.output_tokens,
-        total_tokens=payload.total_tokens or (payload.input_tokens + payload.output_tokens),
+        total_tokens=payload.total_tokens,
         cost_usd=payload.cost_usd,
         success=payload.success,
         latency_ms=payload.latency_ms,

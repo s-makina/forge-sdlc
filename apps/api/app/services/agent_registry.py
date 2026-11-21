@@ -140,15 +140,25 @@ def validate_config(
         raise RegistryValidationError(issues)
 
 
-def _tool_permission_slice(tool_name: str, permissions: dict[str, bool]) -> dict[str, bool]:
+def _tool_required_permissions(db: Session, tool_name: str) -> list[str]:
+    row = db.scalar(select(Tool).where(Tool.name == tool_name, Tool.is_active.is_(True)))
+    if row is None:
+        return []
+    return list(row.required_permissions)
+
+
+def _tool_permission_slice(
+    required_permissions: list[str], permissions: dict[str, bool]
+) -> dict[str, bool]:
     return {
         key: value
         for key, value in permissions.items()
-        if key == tool_name or key.startswith(tool_name + "_")
+        if key in required_permissions
     }
 
 
 def _build_version(
+    db: Session,
     *,
     agent: Agent,
     version: str,
@@ -178,10 +188,11 @@ def _build_version(
     for position, skill_name in enumerate(dict.fromkeys(skills)):
         row.skills.append(AgentSkill(skill_name=skill_name, position=position))
     for position, tool_name in enumerate(dict.fromkeys(tools)):
+        required = _tool_required_permissions(db, tool_name)
         row.tool_permissions.append(
             AgentToolPermission(
                 tool_name=tool_name,
-                permissions=_tool_permission_slice(tool_name, permission_map),
+                permissions=_tool_permission_slice(required, permission_map),
                 position=position,
             )
         )
@@ -205,20 +216,21 @@ def create_agent(db: Session, payload: AgentCreate) -> Agent:
         is_active=True,
     )
     db.add(agent)
-    db.flush()
-    version = _build_version(
-        agent=agent,
-        version="1.0.0",
-        instructions=payload.instructions,
-        capabilities=payload.capabilities,
-        model_profile=payload.model_profile,
-        quality_gates=payload.quality_gates,
-        skills=payload.skills,
-        tools=payload.tools,
-        status=AgentStatus.CANDIDATE,
-    )
-    db.add(version)
     try:
+        db.flush()
+        version = _build_version(
+            db=db,
+            agent=agent,
+            version="1.0.0",
+            instructions=payload.instructions,
+            capabilities=payload.capabilities,
+            model_profile=payload.model_profile,
+            quality_gates=payload.quality_gates,
+            skills=payload.skills,
+            tools=payload.tools,
+            status=AgentStatus.CANDIDATE,
+        )
+        db.add(version)
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -284,6 +296,7 @@ def update_agent(db: Session, agent: Agent, payload: AgentUpdate) -> Agent:
     validate_config(db, capabilities=capabilities, tools=tools, skills=skills)
 
     version = _build_version(
+        db=db,
         agent=agent,
         version=_next_version(db, agent.id),
         instructions=str(instructions),
@@ -310,6 +323,7 @@ def create_version(db: Session, agent: Agent, payload: AgentVersionCreate) -> Ag
         skills=payload.skills,
     )
     version = _build_version(
+        db=db,
         agent=agent,
         version=_next_version(db, agent.id),
         instructions=payload.instructions,
@@ -402,6 +416,7 @@ def import_definition(
         return agent, existing, created_agent, False
 
     version = _build_version(
+        db=db,
         agent=agent,
         version=definition.version if previous is None else _next_version(db, agent.id),
         instructions=definition.instructions,
@@ -416,7 +431,13 @@ def import_definition(
         definition_hash_value=digest,
     )
     db.add(version)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise VersionConflict(
+            f"agent '{definition.id}' version '{version.version}' already exists"
+        ) from None
     db.expire(agent, ["versions"])
     refreshed = get_agent(db, agent.id)
     assert refreshed is not None
