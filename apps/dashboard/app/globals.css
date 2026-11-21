@@ -113,6 +113,25 @@ ul.list li {
   color: #22543d;
 }
 
+.badge.warn {
+  background: #feebc8;
+  color: #744210;
+}
+
+.badge.bad {
+  background: #fed7d7;
+  color: #9b2c2c;
+}
+
+ol.stage-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+ol.stage-list li {
+  padding: 0.15rem 0;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
