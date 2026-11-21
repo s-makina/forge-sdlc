@@ -19,7 +19,7 @@ from app.schemas.workflows import (
     WorkflowTemplateRead,
     WorkflowTransition,
 )
-from app.services import audit, engine, scheduling, workflows
+from app.services import audit, engine, planning, scheduling, workflows
 
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
@@ -135,6 +135,29 @@ def schedule_workflow(
         actor_id=user.id,
         actor_email=user.email,
         details=f"Scheduled workflow '{workflow.name}'",
+    )
+    return WorkflowRead.model_validate(workflow)
+
+
+@router.post("/{workflow_id}/plan", response_model=WorkflowRead)
+def plan_workflow(
+    workflow_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user),
+) -> WorkflowRead:
+    workflow = _get_workflow_or_404(db, workflow_id)
+    plan = planning.plan_from_feature(db, workflow)
+    audit.record_audit(
+        db,
+        action="workflow.plan",
+        entity_type="workflow",
+        entity_id=str(workflow.id),
+        actor_id=user.id,
+        actor_email=user.email,
+        details=(
+            f"Planned '{workflow.name}': {len(plan.requirements)} requirements, "
+            f"{len(plan.tasks)} tasks"
+        ),
     )
     return WorkflowRead.model_validate(workflow)
 
