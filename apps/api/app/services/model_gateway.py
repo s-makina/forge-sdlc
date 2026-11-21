@@ -16,7 +16,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-import httpx
 import yaml
 
 from app.core.secrets import CredentialError
@@ -90,42 +89,3 @@ def render_litellm_yaml(providers: list[ModelProvider]) -> str:
         f"# Generated at: {datetime.now(UTC).isoformat()}\n"
     )
     return header + yaml.safe_dump(config, sort_keys=False)
-
-
-class GatewayClient:
-    """Thin client for the LiteLLM proxy health endpoints."""
-
-    def __init__(
-        self,
-        base_url: str,
-        *,
-        master_key: str | None = None,
-        transport: httpx.BaseTransport | None = None,
-        timeout: float = 10.0,
-    ) -> None:
-        self._base_url = base_url.rstrip("/")
-        self._master_key = master_key
-        self._transport = transport
-        self._timeout = timeout
-
-    def _client(self) -> httpx.Client:
-        headers = {}
-        if self._master_key:
-            headers["Authorization"] = f"Bearer {self._master_key}"
-        return httpx.Client(
-            base_url=self._base_url,
-            headers=headers,
-            timeout=self._timeout,
-            transport=self._transport,
-        )
-
-    def readiness(self) -> dict[str, Any]:
-        with self._client() as client:
-            response = client.get("/health/readiness")
-        return {"status_code": response.status_code, "body": response.json()}
-
-    def model_health(self, model_name: str | None = None) -> dict[str, Any]:
-        params = {"model": model_name} if model_name else None
-        with self._client() as client:
-            response = client.get("/health", params=params)
-        return {"status_code": response.status_code, "body": response.json()}
