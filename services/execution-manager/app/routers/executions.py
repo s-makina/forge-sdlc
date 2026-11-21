@@ -1,14 +1,17 @@
 """Execution API routes.
 
-Exposes the Phase 3.1 API surface: request execution, poll status, fetch
-logs/artefacts, cancel, and cleanup. The Docker runtime is implemented in later
-subphases; state transitions here exercise the lifecycle state machine.
+Exposes the Phase 3.1 API surface plus the Phase 3.2 workspace-lifecycle
+endpoints: request execution, poll status, fetch logs/artefacts, cancel, and
+cleanup, plus provisioning a workspace container.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.session import get_db
+from app.deps.container import get_docker_client
+from app.docker.client import DockerClient
 from app.models.execution import Execution, ExecutionStatus
 from app.schemas.execution import (
     ExecutionArtefactsRead,
@@ -20,7 +23,7 @@ from app.schemas.execution import (
     ExecutionRead,
     ExecutionStatusRead,
 )
-from app.services import executions
+from app.services import executions, executor
 
 router = APIRouter(prefix="/executions", tags=["executions"])
 
@@ -35,6 +38,17 @@ def _get_execution_or_404(db: Session, execution_id: str) -> Execution:
 @router.post("", response_model=ExecutionRead, status_code=status.HTTP_201_CREATED)
 def request_execution(payload: ExecutionCreate, db: Session = Depends(get_db)) -> ExecutionRead:
     execution = executions.create_execution(db, payload)
+    return ExecutionRead.model_validate(execution)
+
+
+@router.post("/{execution_id}/provision", response_model=ExecutionRead)
+def provision_execution(
+    execution_id: str,
+    db: Session = Depends(get_db),
+    docker: DockerClient = Depends(get_docker_client),
+) -> ExecutionRead:
+    execution = _get_execution_or_404(db, execution_id)
+    execution = executor.provision(db, execution, docker, get_settings())
     return ExecutionRead.model_validate(execution)
 
 
@@ -83,7 +97,11 @@ def cancel_execution(execution_id: str, db: Session = Depends(get_db)) -> Execut
 
 
 @router.post("/{execution_id}/cleanup", response_model=ExecutionCleanupRead)
-def cleanup_execution(execution_id: str, db: Session = Depends(get_db)) -> ExecutionCleanupRead:
+def cleanup_execution(
+    execution_id: str,
+    db: Session = Depends(get_db),
+    docker: DockerClient = Depends(get_docker_client),
+) -> ExecutionCleanupRead:
     execution = _get_execution_or_404(db, execution_id)
     if execution.status not in (
         ExecutionStatus.CANCELLED.value,
@@ -94,5 +112,5 @@ def cleanup_execution(execution_id: str, db: Session = Depends(get_db)) -> Execu
             status_code=status.HTTP_409_CONFLICT,
             detail="Execution is not in a cleanable terminal state",
         )
-    execution = executions.transition(db, execution, ExecutionStatus.DONE)
+    execution = executor.cleanup(db, execution, docker)
     return ExecutionCleanupRead(execution_id=execution_id, status=execution.status, cleaned=True)
