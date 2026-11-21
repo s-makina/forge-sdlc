@@ -29,6 +29,7 @@ class ExecutionRead(BaseModel):
     branch: str
     status: str
     container_id: str | None
+    session_id: str | None
     error_message: str | None
     image: str
     cpu_limit: float

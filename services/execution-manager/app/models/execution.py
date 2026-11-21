@@ -47,6 +47,7 @@ class Execution(Base, TimestampMixin):
         String(32), nullable=False, default=ExecutionStatus.CREATED.value, index=True
     )
     container_id: Mapped[str | None] = mapped_column(String(128))
+    session_id: Mapped[str | None] = mapped_column(String(128))
     error_message: Mapped[str | None] = mapped_column(Text)
 
     # Workspace policies (README §12.2 / §12.3).

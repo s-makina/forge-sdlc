@@ -7,6 +7,7 @@ from typing import cast
 
 from app.core.config import Settings, get_settings
 from app.docker.client import DockerClient, DockerSdkClient
+from app.openhands.client import CodingRuntime, OpenHandsSdkRuntime
 
 
 class Container:
@@ -16,6 +17,7 @@ class Container:
         self._singletons: dict[str, object] = {
             "settings": get_settings(),
             "docker_client": DockerSdkClient(),
+            "coding_runtime": OpenHandsSdkRuntime(base_url=get_settings().openhands_base_url),
         }
 
     def register(self, name: str, instance: object) -> None:
@@ -33,6 +35,10 @@ class Container:
     @property
     def docker_client(self) -> DockerClient:
         return cast(DockerClient, self.resolve("docker_client"))
+
+    @property
+    def coding_runtime(self) -> CodingRuntime:
+        return cast(CodingRuntime, self.resolve("coding_runtime"))
 
 
 @lru_cache

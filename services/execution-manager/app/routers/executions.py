@@ -10,9 +10,10 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.session import get_db
-from app.deps.container import get_docker_client
+from app.deps.container import get_coding_runtime, get_docker_client
 from app.docker.client import DockerClient
 from app.models.execution import Execution, ExecutionStatus
+from app.openhands.client import CodingRuntime
 from app.schemas.execution import (
     ExecutionArtefactsRead,
     ExecutionCancelRead,
@@ -23,7 +24,7 @@ from app.schemas.execution import (
     ExecutionRead,
     ExecutionStatusRead,
 )
-from app.services import executions, executor
+from app.services import executions, executor, repository, runtime
 
 router = APIRouter(prefix="/executions", tags=["executions"])
 
@@ -49,6 +50,28 @@ def provision_execution(
 ) -> ExecutionRead:
     execution = _get_execution_or_404(db, execution_id)
     execution = executor.provision(db, execution, docker, get_settings())
+    return ExecutionRead.model_validate(execution)
+
+
+@router.post("/{execution_id}/prepare", response_model=ExecutionRead)
+def prepare_execution(
+    execution_id: str,
+    db: Session = Depends(get_db),
+    docker: DockerClient = Depends(get_docker_client),
+) -> ExecutionRead:
+    execution = _get_execution_or_404(db, execution_id)
+    execution = repository.prepare_repository(db, docker, execution)
+    return ExecutionRead.model_validate(execution)
+
+
+@router.post("/{execution_id}/start-session", response_model=ExecutionRead)
+def start_session(
+    execution_id: str,
+    db: Session = Depends(get_db),
+    coding_runtime: CodingRuntime = Depends(get_coding_runtime),
+) -> ExecutionRead:
+    execution = _get_execution_or_404(db, execution_id)
+    _, execution = runtime.start_coding_session(db, coding_runtime, execution)
     return ExecutionRead.model_validate(execution)
 
 
