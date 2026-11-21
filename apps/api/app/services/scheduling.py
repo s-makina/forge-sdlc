@@ -35,13 +35,17 @@ def assign_to_role(db: Session, task: Task, role: str) -> Task:
     """Assign a task to the active agent version for ``role``.
 
     Prefers an active agent whose ``role`` matches; the task is moved to
-    ``assigned`` and its ``assigned_role`` set.
+    ``assigned`` and its ``assigned_role`` set. When the role is a developer,
+    the task is given a dedicated ``task/<id>`` branch so parallel developers
+    work on separate branches (README §11.1, Phase 4.5).
     """
     version = _active_version_for_role(db, role)
     if version is None:
         raise NoSuitableAgent(f"no active agent for role '{role}'")
     task.assigned_role = role
     task.assigned_agent_id = version.agent_id
+    if role == DEVELOPER_ROLE:
+        task.target_branch = f"task/{task.id}"
     task.status = TaskStatus.ASSIGNED.value
     db.commit()
     db.refresh(task)
@@ -85,7 +89,7 @@ def schedule_ready_tasks(
     stmt = select(Task).where(Task.status == TaskStatus.READY.value)
     if project_id is not None:
         stmt = stmt.where(Task.project_id == project_id)
-    ready = list(db.scalars(stmt.order_by(Task.priority).all()))
+    ready = list(db.scalars(stmt.order_by(Task.priority)).all())
 
     started: list[Task] = []
     active_dev = count_developer_tasks(db, project_id=project_id)
