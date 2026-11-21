@@ -23,6 +23,9 @@ class Settings(BaseSettings):
     # Control-plane API the orchestrator submits work against.
     control_plane_url: str = "http://localhost:8000"
 
+    # Execution-manager API (Phase 4.4/4.6).
+    execution_manager_url: str = "http://localhost:8001"
+
     # Temporal connection (Phase 4.1).
     temporal_host: str = "localhost:7233"
     temporal_namespace: str = "default"

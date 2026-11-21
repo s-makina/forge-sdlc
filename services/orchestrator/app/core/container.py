@@ -6,6 +6,7 @@ from functools import lru_cache
 from typing import cast
 
 from app.core.config import Settings, get_settings
+from app.execution.client import ExecutionManagerClient, HttpxExecutionManagerClient
 from app.services.orchestrator import Orchestrator
 from app.temporal.client import SdkTemporalClient, TemporalClient
 
@@ -20,14 +21,19 @@ class Container:
             namespace=settings.temporal_namespace,
             task_queue=settings.temporal_task_queue,
         )
+        execution_manager_client: ExecutionManagerClient = HttpxExecutionManagerClient(
+            base_url=settings.execution_manager_url,
+        )
         orchestrator = Orchestrator(
             temporal_client,
             task_queue=settings.temporal_task_queue,
             timeout_seconds=settings.workflow_timeout_seconds,
+            execution_manager=execution_manager_client,
         )
         self._singletons: dict[str, object] = {
             "settings": settings,
             "temporal_client": temporal_client,
+            "execution_manager_client": execution_manager_client,
             "orchestrator": orchestrator,
         }
 
@@ -50,6 +56,10 @@ class Container:
     @property
     def temporal_client(self) -> TemporalClient:
         return cast(TemporalClient, self.resolve("temporal_client"))
+
+    @property
+    def execution_manager_client(self) -> ExecutionManagerClient:
+        return cast(ExecutionManagerClient, self.resolve("execution_manager_client"))
 
 
 @lru_cache

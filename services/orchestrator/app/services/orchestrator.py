@@ -4,13 +4,15 @@ Coordinates durable workflows: submitting them to Temporal, signalling
 cancellation, and reading back their durable status. The workflow *definition*
 lives in the control-plane API (``apps/api``) and is mirrored here as the
 workflow the orchestrator runs; agent conversations are never the record of
-progress (README §10.3, FR-6.2).
+progress (README §10.3, FR-6.2). The orchestrator also hands scheduled work off
+to the execution-manager (Phase 4.4/4.6).
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.execution.client import ExecutionManagerClient, ExecutionRequest
 from app.temporal.client import TemporalClient, WorkflowRun
 
 
@@ -41,14 +43,20 @@ class Orchestrator:
         *,
         task_queue: str,
         timeout_seconds: int,
+        execution_manager: ExecutionManagerClient,
     ) -> None:
         self._client = client
         self._task_queue = task_queue
         self._timeout_seconds = timeout_seconds
+        self._execution_manager = execution_manager
 
     @property
     def client(self) -> TemporalClient:
         return self._client
+
+    @property
+    def execution_manager(self) -> ExecutionManagerClient:
+        return self._execution_manager
 
     def start(self, submission: WorkflowSubmission) -> WorkflowRun:
         """Submit a workflow instance to Temporal as a durable run."""
@@ -70,3 +78,15 @@ class Orchestrator:
 
     def healthy(self) -> bool:
         return self._client.health()
+
+    def request_execution(self, request: ExecutionRequest) -> str:
+        """Request an execution from the execution-manager for a scheduled task.
+
+        Returns the execution-manager's opaque execution id.
+        """
+        handle = self._execution_manager.request_execution(request)
+        return handle.execution_id
+
+    def execution_status(self, execution_id: str) -> str:
+        """Return the execution-manager status for ``execution_id`` ('' if unknown)."""
+        return self._execution_manager.execution_status(execution_id)
