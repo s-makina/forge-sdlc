@@ -213,3 +213,127 @@ export const checkProvider = (providerId: number) =>
 
 export const getTools = () => api<ListResponse<ToolInfo>>("/registries/tools");
 export const getSkills = () => api<ListResponse<SkillInfo>>("/registries/skills");
+
+// --- Workflows (Phase 4.2/4.7) ---------------------------------------------
+
+export interface WorkflowStage {
+  id: number;
+  workflow_id: number;
+  position: number;
+  name: string;
+  agent_role: string;
+  status: string;
+  retries: number;
+  error_message: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface Workflow {
+  id: number;
+  project_id: number;
+  template_id: number;
+  name: string;
+  status: string;
+  inputs: Record<string, unknown>;
+  error_message: string | null;
+  stages: WorkflowStage[];
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkflowTemplateStage {
+  id: number;
+  position: number;
+  name: string;
+  agent_role: string;
+  depends_on: string[];
+}
+
+export interface WorkflowTemplate {
+  id: number;
+  slug: string;
+  name: string;
+  description: string | null;
+  category: string;
+  input_schema: Record<string, unknown>;
+  is_active: boolean;
+  stages: WorkflowTemplateStage[];
+  created_at: string;
+  updated_at: string;
+}
+
+export const getWorkflows = (projectId?: number) =>
+  api<ListResponse<Workflow>>(`/workflows${projectId ? `?project_id=${projectId}` : ""}`);
+export const getWorkflow = (id: number) => api<Workflow>(`/workflows/${id}`);
+export const createWorkflow = (data: {
+  project_id: number;
+  template_id: number;
+  name: string;
+  inputs?: Record<string, unknown>;
+}) => api<Workflow>("/workflows", { method: "POST", body: data });
+export const scheduleWorkflow = (id: number) =>
+  api<Workflow>(`/workflows/${id}/schedule`, { method: "POST" });
+export const advanceWorkflow = (id: number) =>
+  api<Workflow>(`/workflows/${id}/advance`, { method: "POST" });
+export const cancelWorkflow = (id: number) =>
+  api<Workflow>(`/workflows/${id}/cancel`, { method: "POST" });
+export const recoverWorkflow = (id: number) =>
+  api<Workflow>(`/workflows/${id}/recover`, { method: "POST" });
+export const getWorkflowTemplates = (includeInactive = false) =>
+  api<ListResponse<WorkflowTemplate>>(
+    `/workflows/templates${includeInactive ? "?include_inactive=true" : ""}`
+  );
+
+// --- Tasks (Phase 4.3/4.7) -------------------------------------------------
+
+export interface Task {
+  id: number;
+  project_id: number;
+  workflow_id: number | null;
+  title: string;
+  description: string | null;
+  task_type: string;
+  priority: string;
+  status: string;
+  acceptance_criteria: string | null;
+  repository_url: string | null;
+  target_branch: string;
+  assigned_role: string | null;
+  assigned_agent_id: number | null;
+  skills: string[];
+  model_profile: string | null;
+  relevant_files: string[];
+  cpu_limit: number | null;
+  memory_limit: string | null;
+  disk_limit: string | null;
+  timeout_seconds: number | null;
+  network_policy: string | null;
+  result_summary: string | null;
+  artefact_refs: string[];
+  dependencies: number[];
+  depends_on: number[];
+  started_at: string | null;
+  finished_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const getTasks = (projectId?: number, statusFilter?: string) => {
+  const params = new URLSearchParams();
+  if (projectId) params.set("project_id", String(projectId));
+  if (statusFilter) params.set("status_filter", statusFilter);
+  const qs = params.toString();
+  return api<ListResponse<Task>>(`/tasks${qs ? `?${qs}` : ""}`);
+};
+export const getTask = (id: number) => api<Task>(`/tasks/${id}`);
+export const createTask = (data: Record<string, unknown>) =>
+  api<Task>("/tasks", { method: "POST", body: data });
+export const updateTask = (id: number, data: Record<string, unknown>) =>
+  api<Task>(`/tasks/${id}`, { method: "PATCH", body: data });
+export const transitionTaskStatus = (id: number, status: string, note?: string) =>
+  api<Task>(`/tasks/${id}/status`, { method: "POST", body: { status, ...(note ? { note } : {}) } });
+export const setTaskDependencies = (id: number, dependsOn: number[]) =>
+  api<Task>(`/tasks/${id}/dependencies`, { method: "POST", body: { depends_on: dependsOn } });
