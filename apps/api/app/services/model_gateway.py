@@ -72,7 +72,7 @@ def render_litellm_config(
             if not model.is_active:
                 continue
             params: dict[str, Any] = {
-                "model": f"{prefix}/{model.name}",
+                "model": model.name,
                 "api_base": provider.base_url,
             }
             if raw_key:
@@ -178,7 +178,7 @@ def test_litellm_model(
         headers["Authorization"] = f"Bearer {settings.litellm_master_key}"
 
     body = {
-        "model": f"{prefix}/{model.name}",
+        "model": model.name,
         "messages": [{"role": "user", "content": "test"}],
         "max_tokens": 10,
     }
