@@ -264,6 +264,10 @@ export const getProviderModels = (providerId: number) =>
   api<ListResponse<ModelInfo>>(`/models/providers/${providerId}/models`);
 export const createModel = (providerId: number, data: unknown) =>
   api<ModelInfo>(`/models/providers/${providerId}/models`, { method: "POST", body: data });
+export const updateModel = (modelId: number, data: unknown) =>
+  api<ModelInfo>(`/models/items/${modelId}`, { method: "PATCH", body: data });
+export const deleteModel = (modelId: number) =>
+  api<null>(`/models/items/${modelId}`, { method: "DELETE" });
 export const getModelProfiles = () => api<ListResponse<ModelProfile>>("/models/profiles");
 export const createModelProfile = (data: unknown) =>
   api<ModelProfile>("/models/profiles", { method: "POST", body: data });

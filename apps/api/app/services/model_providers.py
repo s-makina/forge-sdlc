@@ -176,6 +176,11 @@ def update_model(db: Session, model: Model, payload: ModelUpdate) -> Model:
     return model
 
 
+def delete_model(db: Session, model: Model) -> None:
+    db.delete(model)
+    db.commit()
+
+
 def list_profiles(db: Session) -> list[ModelProfile]:
     stmt = select(ModelProfile).order_by(ModelProfile.name)
     return list(db.scalars(stmt).all())

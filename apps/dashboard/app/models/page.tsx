@@ -14,6 +14,7 @@ import { AssignProfileForm } from "@/components/assign-profile-form";
 import { CheckProviderButton } from "@/components/check-provider-button";
 import { CreateModelForm } from "@/components/create-model-form";
 import { CreateProviderForm } from "@/components/create-provider-form";
+import { ModelsList } from "@/components/models-list";
 
 export const dynamic = "force-dynamic";
 
@@ -124,20 +125,7 @@ export default async function ModelsPage() {
         </table>
       </div>
 
-      <div className="card">
-        <h2>Models</h2>
-        <ul className="list">
-          {models.map((model) => (
-            <li key={model.id}>
-              <strong>{model.name}</strong>{" "}
-              <span className="muted">
-                · {model.provider_name} · {model.capabilities.join(", ")}
-              </span>
-            </li>
-          ))}
-          {models.length === 0 && <li className="placeholder">No models registered yet.</li>}
-        </ul>
-      </div>
+      <ModelsList models={models} capabilities={capabilities} />
 
       <div className="card">
         <h2>Model Profiles (roles)</h2>

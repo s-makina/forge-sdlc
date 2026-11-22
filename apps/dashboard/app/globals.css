@@ -123,6 +123,25 @@ ul.list li {
   color: #9b2c2c;
 }
 
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85rem;
+}
+
+button.danger {
+  background: #fed7d7;
+  color: #9b2c2c;
+  border: 1px solid #fc8181;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+button.danger:hover {
+  background: #fc8181;
+}
+
 ol.stage-list {
   list-style: none;
   padding-left: 0;

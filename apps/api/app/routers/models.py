@@ -234,6 +234,25 @@ def update_model(
     return read
 
 
+@router.delete("/items/{model_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_model_route(
+    model_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_operator),
+) -> None:
+    model = _get_model_or_404(db, model_id)
+    model_providers.delete_model(db, model)
+    audit.record_audit(
+        db,
+        action="model.delete",
+        entity_type="model",
+        entity_id=str(model_id),
+        actor_id=user.id,
+        actor_email=user.email,
+        details=f"Deleted model '{model.name}'",
+    )
+
+
 @router.get("/profiles", response_model=ModelProfileList)
 def list_profiles(
     db: Session = Depends(get_db),
