@@ -22,6 +22,28 @@ function resolveApiBaseUrl(): string {
 }
 
 const API_BASE_URL = resolveApiBaseUrl();
+const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME ?? "forgesdlc_session";
+
+// Server-side rendering (React Server Components) does not send the browser's
+// session cookie, so calls to auth-protected endpoints return 401 and the page
+// shows "Unable to load". Forward the user's session cookie into those fetches
+// by reading it from the incoming request via next/headers. next/headers is a
+// server-only module, so it is imported dynamically and only reached when
+// `window` is undefined (i.e. on the server) to keep this file usable by
+// client components as well.
+async function sessionCookieHeader(): Promise<Record<string, string> | undefined> {
+  if (typeof window !== "undefined") {
+    return undefined;
+  }
+  try {
+    const { cookies } = await import("next/headers");
+    const store = await cookies();
+    const value = store.get(SESSION_COOKIE_NAME)?.value;
+    return value ? { Cookie: `${SESSION_COOKIE_NAME}=${value}` } : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 interface RequestOptions {
   method?: string;
@@ -30,10 +52,12 @@ interface RequestOptions {
 }
 
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const cookieHeader = await sessionCookieHeader();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method: options.method ?? "GET",
     headers: {
       "Content-Type": "application/json",
+      ...(cookieHeader ?? {}),
     },
     credentials: options.credentials ?? "include",
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
