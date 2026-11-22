@@ -64,7 +64,14 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   });
 
   if (!response.ok) {
-    throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+    let detail = `${response.status} ${response.statusText}`;
+    try {
+      const payload = (await response.json()) as { detail?: unknown };
+      if (typeof payload.detail === "string") detail = payload.detail;
+    } catch {
+      // No JSON body; keep the status line.
+    }
+    throw new Error(`API request failed: ${detail}`);
   }
 
   return (await response.json()) as T;
@@ -259,7 +266,16 @@ export const createModel = (providerId: number, data: unknown) =>
 export const getModelProfiles = () => api<ListResponse<ModelProfile>>("/models/profiles");
 export const createModelProfile = (data: unknown) =>
   api<ModelProfile>("/models/profiles", { method: "POST", body: data });
+export const updateModelProfile = (id: number, data: unknown) =>
+  api<ModelProfile>(`/models/profiles/${id}`, { method: "PATCH", body: data });
 export const getProviderHealth = () => api<ListResponse<ProviderHealth>>("/models/health");
+
+export interface CapabilityInfo {
+  value: string;
+  description: string;
+}
+
+export const getCapabilities = () => api<{ items: CapabilityInfo[] }>("/models/capabilities");
 export const checkProvider = (providerId: number) =>
   api<ProviderHealth>(`/models/providers/${providerId}/check`, { method: "POST" });
 

@@ -1,5 +1,6 @@
 import {
   api,
+  type CapabilityInfo,
   type ListResponse,
   type ModelInfo,
   type ModelProfile,
@@ -8,6 +9,10 @@ import {
   type SkillInfo,
   type ToolInfo,
 } from "@/lib/api";
+import { AssignProfileForm } from "@/components/assign-profile-form";
+import { CheckProviderButton } from "@/components/check-provider-button";
+import { CreateModelForm } from "@/components/create-model-form";
+import { CreateProviderForm } from "@/components/create-provider-form";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +23,7 @@ export default async function ModelsPage() {
   let health: ProviderHealth[] = [];
   let tools: ToolInfo[] = [];
   let skills: SkillInfo[] = [];
+  let capabilities: CapabilityInfo[] = [];
   let error = false;
 
   const get = async <T,>(fn: Promise<T>) => {
@@ -28,13 +34,14 @@ export default async function ModelsPage() {
     }
   };
 
-  const [p, m, pf, h, t, sk] = await Promise.all([
+  const [p, m, pf, h, t, sk, c] = await Promise.all([
     get(api<ListResponse<ModelProvider>>("/models/providers").then((r) => r.items)),
     get(api<ListResponse<ModelInfo>>("/models/items").then((r) => r.items)),
     get(api<ListResponse<ModelProfile>>("/models/profiles").then((r) => r.items)),
     get(api<ListResponse<ProviderHealth>>("/models/health").then((r) => r.items)),
     get(api<ListResponse<ToolInfo>>("/registries/tools").then((r) => r.items)),
     get(api<ListResponse<SkillInfo>>("/registries/skills").then((r) => r.items)),
+    get(api<{ items: CapabilityInfo[] }>("/models/capabilities").then((r) => r.items)),
   ]);
 
   if (p === undefined && m === undefined && pf === undefined) error = true;
@@ -44,16 +51,20 @@ export default async function ModelsPage() {
   health = h ?? [];
   tools = t ?? [];
   skills = sk ?? [];
+  capabilities = c ?? [];
 
   const modelsByProvider = (providerId: number) =>
     models.filter((m) => m.provider_id === providerId);
-  const profileFor = (profile: ModelProfile) =>
-    models.find((m) => m.id === profile.primary_model_id) ?? null;
 
   return (
     <div>
       <h1>Models</h1>
       {error && <p className="error">Unable to load model configuration.</p>}
+
+      <div className="two-col">
+        <CreateProviderForm />
+        <CreateModelForm providers={providers} capabilities={capabilities} />
+      </div>
 
       <div className="card">
         <h2>Providers &amp; Health</h2>
@@ -66,6 +77,7 @@ export default async function ModelsPage() {
               <th>Credential</th>
               <th>Status</th>
               <th>Models</th>
+              <th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -83,12 +95,15 @@ export default async function ModelsPage() {
                     </span>
                   </td>
                   <td>{modelsByProvider(provider.id).length}</td>
+                  <td>
+                    <CheckProviderButton providerId={provider.id} />
+                  </td>
                 </tr>
               );
             })}
             {providers.length === 0 && (
               <tr>
-                <td colSpan={6} className="placeholder">
+                <td colSpan={7} className="placeholder">
                   No providers configured.
                 </td>
               </tr>
@@ -113,23 +128,8 @@ export default async function ModelsPage() {
       </div>
 
       <div className="card">
-        <h2>Model Profiles</h2>
-        <ul className="list">
-          {profiles.map((profile) => {
-            const target = profileFor(profile);
-            return (
-              <li key={profile.id}>
-                <span className="badge">{profile.name}</span> {profile.description}
-                <span className="muted">
-                  {" "}
-                  → {target ? target.name : "no model assigned"} · requires{" "}
-                  {profile.required_capabilities.join(", ") || "chat"}
-                </span>
-              </li>
-            );
-          })}
-          {profiles.length === 0 && <li className="placeholder">No profiles configured.</li>}
-        </ul>
+        <h2>Model Profiles (roles)</h2>
+        <AssignProfileForm profiles={profiles} models={models} />
       </div>
 
       <div className="card">
