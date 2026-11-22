@@ -162,11 +162,15 @@ OLLAMA_PORT=11434
 
 # --- Model gateway (LiteLLM) ---
 LITELLM_PORT=4000
-LITELLM_MASTER_KEY=sk-litellm-staging-CHANGE-THIS
+LITELLM_MASTER_KEY=CHANGE-THIS-RANDOM-LITELLM-PROXY-KEY
+# Generate a Fernet key with:
+# python3 -c 'import base64,secrets; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())'
+# Set the generated value before saving provider API keys through the UI.
+CREDENTIAL_ENCRYPTION_KEY=CHANGE-THIS-FERNET-KEY
 
 # --- External OpenAI-compatible provider (NVIDIA NIM default) ---
 EXTERNAL_MODEL_BASE_URL=https://integrate.api.nvidia.com/v1
-EXTERNAL_MODEL_API_KEY=CHANGE-THIS-NVIDIA-API-KEY
+# Add provider credentials through Models in the dashboard; do not put provider keys here.
 
 # --- Execution manager ---
 EXECUTION_MANAGER_PORT=8001
@@ -289,26 +293,70 @@ http://<PUBLIC-IP>:8081/login      # if PROXY_PORT=8081
 
 ---
 
-## 9. LiteLLM + NVIDIA NIM (AI model access)
+## 9. Configure LiteLLM models and providers
 
-Ollama is **disabled** by default. The platform uses LiteLLM with the NVIDIA NIM
-endpoint `https://integrate.api.nvidia.com/v1` as the default external provider.
+LiteLLM model providers, models, credentials, and role/profile assignments are
+managed through ForgeSDLC's **Models** page. The database is the source of truth;
+`infrastructure/litellm/config.yaml` is only the empty fallback config and should
+not be edited to add UI-managed models.
 
-To actually route model calls through NVIDIA NIM, set a real API key:
+Before saving provider credentials, replace `CREDENTIAL_ENCRYPTION_KEY` in `.env`
+with a valid Fernet key (see section 4) and start/recreate the API with that key.
+Keep the key backed up and unchanged: losing or rotating it without re-encrypting
+stored credentials makes those credentials undecryptable.
+
+1. In the Models page, create a provider and add its API key. The API encrypts the
+   key in the database. Create the provider's model entries and assign them to the
+   desired profiles/roles.
+2. Click **Write LiteLLM config**. The API writes
+   `infrastructure/litellm/config.generated.yaml` on the host (mounted into the
+   API as `/app/gateway/config.generated.yaml`). This generated file contains
+   decrypted provider credentials, so it must remain private.
+3. Give the generated file to LiteLLM's non-root user. The API creates it as
+   `root:root` with mode `600`; LiteLLM cannot read it until ownership is changed.
+   Detect the UID/GID used by the configured LiteLLM image, then apply that
+   ownership. For the current image it is `65532:65532`; if the `id` command
+   reports different numbers on another image/server, substitute those UID:GID
+   values in the `chown` command:
+
+   ```bash
+   sudo docker compose -f docker-compose.yml run --rm --no-deps litellm id
+   sudo chown 65532:65532 infrastructure/litellm/config.generated.yaml
+   sudo chmod 600 infrastructure/litellm/config.generated.yaml
+   ```
+
+   Keep the mode at `600`; do not use `chmod 644` because the file contains API
+   keys. If you delete/recreate the generated file, repeat the ownership step.
+   Re-applying config through the UI writes the existing file in place and keeps
+   its owner.
+4. Recreate LiteLLM so it reads the generated config. In this deployment,
+   `/config/reload` returns 404, so a proxy restart is required after applying
+   model/config changes:
+
+   ```bash
+   sudo docker compose -f docker-compose.yml up -d --force-recreate litellm
+   ```
+
+The Compose service mounts the host directory at `/app/gateway` and selects
+`/app/gateway/config.generated.yaml` when it exists. **Do not mount that host
+directory at `/app`**: that hides files supplied by the LiteLLM image and can
+prevent its entrypoint from starting.
+
+Verify the file is visible and readable by LiteLLM without printing its contents:
 
 ```bash
-nano .env
-# Set: EXTERNAL_MODEL_API_KEY=your-nvidia-nim-api-key
-docker compose -f docker-compose.yml up -d litellm
+sudo docker compose -f docker-compose.yml exec litellm \
+  sh -lc 'ls -ln /app/gateway/config.generated.yaml'
 ```
 
-Then enable specific models in
-`infrastructure/litellm/config.yaml` (uncomment the `model_list` example and
-fill in model names), or render the gateway config from the API:
+Then inspect LiteLLM's model list (the master key is read inside the container
+and is not printed):
 
 ```bash
-curl -s http://localhost:8000/api/v1/models/gateway/config.yaml
+sudo docker compose -f docker-compose.yml exec litellm python -c 'import os,urllib.request; req=urllib.request.Request("http://localhost:4000/v1/models",headers={"Authorization":"Bearer "+os.environ["LITELLM_MASTER_KEY"]}); print(urllib.request.urlopen(req).read().decode())'
 ```
+
+The response should include the configured model aliases. If it is `{"data":[],"object":"list"}` or omits a model, check LiteLLM startup logs and confirm the generated file exists, is owned by LiteLLM's UID/GID, and is readable. Never `cat` or share the generated YAML; it contains provider credentials.
 
 ---
 
@@ -348,7 +396,10 @@ docker compose -f docker-compose.yml up -d
 | Port 80 already in use | Another service (traefik/dokploy) owns 80 | Set `PROXY_PORT=8081` in `.env`, rebuild, restart |
 | Dashboard returns 500 / `EvalError` | Started with `docker-compose.override.yml` (dev mode) | Always use `-f docker-compose.yml` on staging |
 | API exits `exec ./entrypoint.sh: no such file` | CRLF line endings in checkout | Re-clone on Linux (LF endings) |
-| Litellm health failing | `EXTERNAL_MODEL_API_KEY` empty or NVIDIA NIM unreachable | Set key in `.env`, restart litellm, check outbound HTTPS |
+| LiteLLM exits with `PermissionError` reading `config.generated.yaml` | Generated file is owned by root, but LiteLLM runs as non-root | Run `docker compose -f docker-compose.yml run --rm --no-deps litellm id`, then `sudo chown UID:GID infrastructure/litellm/config.generated.yaml && sudo chmod 600 infrastructure/litellm/config.generated.yaml`; recreate LiteLLM |
+| LiteLLM `/v1/models` returns an empty list after applying config | Generated config is missing, unreadable, or proxy was not recreated | Verify file at `/app/gateway/config.generated.yaml`, fix owner/mode, then `docker compose -f docker-compose.yml up -d --force-recreate litellm` |
+| Test Model returns HTTP 400 `Invalid model name` | Running LiteLLM config does not contain the model alias | Confirm model appears in authenticated `/v1/models`; write config in Models UI and recreate LiteLLM |
+| LiteLLM `/config/reload` returns 404 | Reload route is not provided by the deployed LiteLLM version | Recreate LiteLLM after writing config; see section 9 |
 | Temporal exits `Unsupported driver` | Old `DB=postgresql` value | Already fixed to `DB=postgres12` in compose |
 
 ---
@@ -356,7 +407,9 @@ docker compose -f docker-compose.yml up -d
 ## 12. Security notes (before going public)
 
 - Change `SESSION_SECRET_KEY`, `POSTGRES_PASSWORD`, `BOOTSTRAP_OPERATOR_PASSWORD`,
-  `EXTERNAL_MODEL_API_KEY`, `LITELLM_MASTER_KEY` from the defaults.
+  `LITELLM_MASTER_KEY`, and `CREDENTIAL_ENCRYPTION_KEY` from the defaults. Add provider
+  API keys through the Models UI; they are encrypted in the database and rendered
+  into the private generated LiteLLM config only when applying it.
 - Do **not** publish internal ports (5432, 7233, 8000, 3000, 4000, 8001, 8002)
   to the public interface — only `PROXY_PORT`. In `docker-compose.yml`, internal
   services bind to `0.0.0.0`; on a hardened host, restrict their `ports:` to
