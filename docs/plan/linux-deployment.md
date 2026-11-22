@@ -1,44 +1,38 @@
-# Deploying ForgeSDLC on a Linux Host (with remote access)
+# ForgeSDLC — Staging Server Deployment Guide
 
-This guide deploys the full ForgeSDLC stack on a dedicated Linux machine (bare
-metal, VM, or cloud VM) and makes it reachable from outside that box via port
-forwarding. It assumes you are coming from a Windows/WSL2 dev box and want a
-proper always-on Linux environment.
+Deploy ForgeSDLC on a public staging server (Linux VM / cloud instance) and make it
+reachable over HTTP(S). This guide walks you through: requirements → port checks →
+clone → configure → build → start → verify.
 
----
-
-## 0. Quick summary
-
-```
-# On the Linux host
-sudo apt-get update && sudo apt-get install -y docker.io docker-compose-v2 git
-
-git clone <YOUR-REPO-URL> forge-sdlc
-cd forge-sdlc
-
-cp .env.example .env            # then edit ports / credentials
-docker compose -f docker-compose.yml build
-docker compose -f docker-compose.yml up -d
-docker compose -f docker-compose.yml ps
-
-# From your Windows machine
-curl http://<LINUX-IP>:8081/health
-# open http://<LINUX-IP>:8081/login in a browser
-```
+**Assumed target:** a fresh Ubuntu 22.04 / 24.04 staging VM with root or sudo access.
+**Out-of-scope:** TLS termination. If you need HTTPS, put a reverse proxy (Caddy /
+Traefik / Nginx) in front of the ForgeSDLC `proxy` service on port 80/443.
 
 ---
 
-## 1. Provision the Linux host
+## 1. Requirements & resource check
 
-Recommended minimums (the Python + Next.js stack is modest):
+| Component | Minimum | Recommended |
+|-----------|---------|-------------|
+| OS | Ubuntu 22.04+ (any systemd Linux) | Ubuntu 24.04 LTS |
+| CPU | 2 cores | 4+ cores |
+| RAM | 4 GB | 8 GB |
+| Disk | 40 GB | 80+ GB |
+| Docker | Engine 25+ + Compose v2 plugin | latest stable |
+| Outbound internet | Yes (image pulls + NVIDIA NIM API) | Yes |
 
-- OS: Ubuntu 22.04 or 24.04 LTS (or any distro with Docker Engine)
-- CPU: 4 cores
-- RAM: 8 GB (7.6 GB was enough on WSL; give it headroom)
-- Disk: 40 GB
-- Outbound internet: Docker needs to pull images on first build
+On your staging server, run:
 
-### Install Docker Engine + Compose plugin
+```bash
+lsb_release -a
+nproc
+free -h
+df -h /
+docker --version
+docker compose version
+```
+
+If Docker is not installed yet:
 
 ```bash
 sudo apt-get update
@@ -47,257 +41,343 @@ sudo install -m 0755 -d /etc/apt/keyrings
 sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
   -o /etc/apt/keyrings/docker.asc
 sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-# Ubuntu 24.04 (noble). Adjust codename to your release if different.
 echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
-  https://download.docker.com/linux/ubuntu noble stable" | \
+  https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
   sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
   docker-buildx-plugin docker-compose-plugin
-
-# Add your user to the docker group so you don't need sudo
 sudo usermod -aG docker "$USER"
-# log out and back in (or: newgrp docker)
-```
-
-Verify:
-
-```bash
-docker --version
-docker compose version
-docker info
-```
-
-Enable Docker on boot (so the stack survives reboots):
-
-```bash
 sudo systemctl enable --now docker
+# Log out and back in (or run: newgrp docker) so you don't need sudo for docker
 ```
 
 ---
 
-## 2. Get the code
+## 2. Port verification (critical before starting)
+
+ForgeSDLC binds these host ports by default:
+
+| Service | Host port | Purpose |
+|---------|-----------|---------|
+| proxy (nginx) | **80** (configurable via `PROXY_PORT`) | Public front door → API + dashboard |
+| api | 8000 | Internal (FastAPI) |
+| dashboard | 3000 | Internal (Next.js) |
+| temporal | 7233 | Internal (workflow engine) |
+| temporal-ui | 8080 | Internal (Temporal web UI) |
+| execution-manager | 8001 | Internal |
+| orchestrator | 8002 | Internal |
+| postgres | 5432 | Internal (DB) |
+| redis | 6379 | Internal (cache) |
+| litellm | 4000 | Internal (model gateway) |
+
+Only **port 80** (via `PROXY_PORT`) needs to be publicly reachable. Everything else
+stays internal on the Docker bridge network.
+
+### Check what's already listening
+
+On your staging server, run:
+
+```bash
+sudo ss -tlnp | grep -E ':80|:443|:8081|:3000|:5432|:6379|:4000|:7233|:8080|:8000|:8001|:8002'
+```
+
+**If port 80 or 443 is already taken** (e.g. by an existing traefik/dokploy/Nginx
+installation), set `PROXY_PORT=8081` in `.env` and access the app at
+`http://<SERVER-IP>:8081`. Otherwise use `PROXY_PORT=80` and access at
+`http://<SERVER-IP>/`.
+
+Also check your cloud provider's **security group / firewall** allows inbound TCP
+on whatever `PROXY_PORT` you choose (and SSH, port 22).
+
+---
+
+## 3. Clone the repository
 
 ```bash
 git clone <YOUR-REPO-URL> forge-sdlc
 cd forge-sdlc
-git status                 # optional: confirm clean checkout
+git status            # should be clean
 ```
 
-> **Line endings:** if you clone on Linux you get correct LF endings, so the
-> `entrypoint.sh` scripts work out of the box (the CRLF problem we hit on the
-> Windows checkout will not occur here).
+> **Line endings:** clone directly on Linux so you get correct LF endings. The
+> `entrypoint.sh` scripts break with Windows CRLF endings.
 
 ---
 
-## 3. Configure `.env`
+## 4. Create the `.env` file (secrets)
 
-Create a local (gitignored) `.env`:
+Copy the example and fill in real values. **Never commit `.env`.**
 
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-A working local set (no port-80 conflict on a fresh box, so you *can* use 80):
+A working staging `.env` (edit the values marked `CHANGE-THIS`):
 
 ```dotenv
-# Front door: set PROXY_PORT=80 to serve the app on the standard HTTP port.
+# ============================================================
+# ForgeSDLC staging environment
+# ============================================================
+
+# --- Postgres ---
+POSTGRES_USER=forgesdlc
+POSTGRES_PASSWORD=CHANGE-THIS-STRONG-DB-PASSWORD
+POSTGRES_DB=forgesdlc
+POSTGRES_PORT=5432
+
+# --- Redis ---
+REDIS_PORT=6379
+
+# --- Dashboard (Next.js) ---
+DASHBOARD_PORT=3000
+NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
+
+# --- Reverse proxy (nginx) ---
+# Use 80 if free; otherwise 8081 (if traefik/dokploy already owns 80/443).
 PROXY_PORT=80
 
-# App / DB credentials — CHANGE THESE for anything beyond a sandbox.
-POSTGRES_USER=forgesdlc
-POSTGRES_PASSWORD=change-this-strong-password
-POSTGRES_DB=forgesdlc
+# --- API (FastAPI) ---
+API_PORT=8000
+ENVIRONMENT=staging
+DATABASE_URL=postgresql+psycopg://forgesdlc:CHANGE-THIS-STRONG-DB-PASSWORD@postgres:5432/forgesdlc
+REDIS_URL=redis://redis:6379/0
 
-SESSION_SECRET_KEY=replace-with-a-long-random-string
+# --- Security ---
+SESSION_SECRET_KEY=CHANGE-THIS-LONG-RANDOM-STRING-AT-LEAST-32-CHARS
+SESSION_COOKIE_NAME=forgesdlc_session
 
-BOOTSTRAP_OPERATOR_EMAIL=operator@forgesdlc.local
-BOOTSTRAP_OPERATOR_PASSWORD=change-this-operator-password
+# --- Bootstrap operator (first admin login) ---
+BOOTSTRAP_OPERATOR_EMAIL=admin@yourdomain.com
+BOOTSTRAP_OPERATOR_PASSWORD=CHANGE-THIS-OPERATOR-PASSWORD
+
+# --- Temporal ---
+TEMPORAL_PORT=7233
+TEMPORAL_UI_PORT=8080
+
+# --- Ollama (DISABLED) ---
+OLLAMA_PORT=11434
+
+# --- Model gateway (LiteLLM) ---
+LITELLM_PORT=4000
+LITELLM_MASTER_KEY=sk-litellm-staging-CHANGE-THIS
+
+# --- External OpenAI-compatible provider (NVIDIA NIM default) ---
+EXTERNAL_MODEL_BASE_URL=https://integrate.api.nvidia.com/v1
+EXTERNAL_MODEL_API_KEY=CHANGE-THIS-NVIDIA-API-KEY
+
+# --- Execution manager ---
+EXECUTION_MANAGER_PORT=8001
 ```
 
-Notes:
-
-- `PROXY_PORT` is the single externally-reachable port (nginx fronts the whole
-  app). On a dedicated box 80 is usually free; use `8081` only if 80 is taken.
-- Every other service is internal on the Docker bridge network and does **not**
-  need to be exposed publicly.
-- Secrets are read at container start. If you change them after first boot, the
-  bootstrap operator password will not retro-update — reset it in the DB or wipe
-  the `postgres_data` volume and re-migrate.
+Save and exit. The `.env` file is gitignored — it will not be committed.
 
 ---
 
-## 4. Build and start the stack
+## 5. Build the images
 
-Use `-f docker-compose.yml` **explicitly**. The repo also ships a
-`docker-compose.override.yml` that runs dev-mode live reloads (mounts source,
-`pnpm dev`) which is incompatible with the production standalone dashboard image.
+Use `-f docker-compose.yml` **explicitly**. Do **not** use
+`docker-compose.override.yml` on staging — it mounts local source and runs dev
+commands (`pnpm dev`, `uvicorn --reload`) which are incompatible with the
+production standalone dashboard image.
 
 ```bash
-# Build all images (first build pulls base images; allow several minutes)
 docker compose -f docker-compose.yml build
+```
 
-# Start everything in the background
+This builds: `api`, `dashboard`, `execution-manager`, `orchestrator`. The
+dashboard build takes a few minutes (Next.js compile). Pulls for `postgres`,
+`redis`, `temporalio/*`, `litellm`, `nginx` happen automatically at startup.
+
+---
+
+## 6. Start the stack
+
+```bash
 docker compose -f docker-compose.yml up -d
+```
 
-# Watch it come up
+Watch it come up:
+
+```bash
 docker compose -f docker-compose.yml ps
 ```
 
-Expected healthy set (roughly 9 containers):
+Expected result — all `forgesdlc-*` containers `Up` and `healthy`:
 
-| Service          | Internal port | Notes                          |
-|------------------|---------------|--------------------------------|
-| postgres         | 5432          | app + temporal DB              |
-| redis            | 6379          |                                |
-| api              | 8000          | runs migrations on entrypoint  |
-| execution-manager| 8001          |                                |
-| orchestrator     | 8002          | talks to temporal              |
-| temporal         | 7233          | workflow engine                |
-| temporal-ui      | 8080          | internal (optional to expose)  |
-| dashboard        | 3000          | Next.js standalone             |
-| proxy (nginx)    | **PROXY_PORT**| the only public port           |
-
-> The compose file sets `restart: unless-stopped`, so the stack auto-recovers if
-> the host restarts or the daemon bounces.
-
----
-
-## 5. Verify locally on the Linux host
-
-```bash
-# API
-curl -s -o /dev/null -w "api /health -> %{http_code}\n" http://localhost:8000/health
-curl -s -o /dev/null -w "api /openapi -> %{http_code}\n" http://localhost:8000/openapi.json
-
-# Dashboard through the proxy
-curl -s -o /dev/null -w "proxy /login -> %{http_code}\n" -L http://localhost:PROXY_PORT/login
+```
+forgesdlc-postgres-1    Up (healthy)
+forgesdlc-redis-1       Up (healthy)
+forgesdlc-api-1         Up (healthy)
+forgesdlc-dashboard-1   Up (healthy)
+forgesdlc-proxy-1       Up
+forgesdlc-temporal-1    Up (healthy)
+forgesdlc-temporal-ui-1 Up
+forgesdlc-litellm-1     Up (healthy)
+forgesdlc-execution-manager-1 Up (healthy)
+forgesdlc-orchestrator-1 Up (healthy)
 ```
 
-When `proxy /login` returns `200`, the end-to-end path
-(nginx → dashboard → api → postgres) is working.
-
-Default login (if you kept the `.env` above):
-
-- **Email:** `operator@forgesdlc.local`
-- **Password:** `change-this-operator-password`
+> If the daemon restarts mid-startup, services with `restart: unless-stopped`
+> (all of them) will come back automatically. Just re-run the `ps` check after
+> ~30 seconds.
 
 ---
 
-## 6. Port forwarding so it's accessible from outside
+## 7. Verify every endpoint
 
-Which steps you need depends on *where* the Linux host sits.
-
-### A. Same LAN (Windows machine → Linux box on your network)
-
-1. Find the Linux host's LAN IP:
-   ```bash
-   hostname -I
-   # e.g. 192.168.1.50
-   ```
-2. Allow the port through the host firewall:
-   ```bash
-   sudo ufw allow PROXY_PORT/tcp    # if ufw is enabled
-   sudo ufw enable
-   sudo ufw status
-   ```
-3. From your Windows browser open:
-   ```
-   http://192.168.1.50:PROXY_PORT/login
-   ```
-
-No router changes needed if both machines are on the same subnet. If you want it
-available on the *standard* port 80, set `PROXY_PORT=80` in `.env` and visit
-`http://192.168.1.50/`.
-
-### B. Linux host behind your home router (expose to the internet)
-
-1. Give the Linux box a **static** DHCP reservation in the router admin panel
-   (bind its MAC to a fixed LAN IP).
-2. In the router's **Port Forwarding / Virtual Server** page, forward inbound
-   `PROXY_PORT` (e.g. 8081) → `<LAN-IP>:8081` (TCP). If you set `PROXY_PORT=80`,
-   forward `80 → <LAN-IP>:80`.
-3. Confirm the public IP (or set a dynamic-DNS hostname):
-   ```bash
-   curl -s ifconfig.me
-   ```
-4. Open `http://<PUBLIC-IP>:PROXY_PORT/login`.
-5. Optionally lock it down by restricting the source IP range or putting the app
-   behind a VPN/reverse proxy (see Security below).
-
-### C. Cloud VM (AWS / GCP / Azure)
-
-- **AWS EC2:** Security Group → Inbound rule: `TCP PROXY_PORT` (or `80`) from
-  `0.0.0.0/0` (public) or your IP. Also ensure the VM's OS firewall allows it
-  (see `ufw` above). A typical EC2 security group also needs your SSH port (22).
-- **GCP:** VPC Firewall rule → allow `tcp:PROXY_PORT` → tagged VMs.
-- **Azure:** NSG Inbound → allow `PROXY_PORT` → the NIC/subnet.
-
-### D. SSH tunnel (no open firewall port; handy for temporary access)
-
-From your Windows machine (needs the Linux host's SSH and your user on it):
+Run these from the staging server itself (replace `80` with `8081` if you set
+`PROXY_PORT=8081`):
 
 ```bash
-ssh -L 8081:localhost:PROXY_PORT user@<LINUX-IP>
+# --- API ---
+curl -s -o /dev/null -w "api /health     -> %{http_code}\n" http://localhost:8000/health
+curl -s -o /dev/null -w "api /openapi    -> %{http_code}\n" http://localhost:8000/openapi.json
+
+# --- Execution manager ---
+curl -s -o /dev/null -w "exec-mgr /health -> %{http_code}\n" http://localhost:8001/health
+
+# --- Orchestrator ---
+curl -s -o /dev/null -w "orchestrator /health -> %{http_code}\n" http://localhost:8002/health
+
+# --- Temporal ---
+curl -s -o /dev/null -w "temporal :7233   -> %{http_code}\n" http://localhost:7233/
+
+# --- Temporal UI ---
+curl -s -o /dev/null -w "temporal-ui :8080 -> %{http_code}\n" http://localhost:8080/
+
+# --- LiteLLM ---
+curl -s -o /dev/null -w "litellm :4000   -> %{http_code}\n" http://localhost:4000/health/liveliness
+
+# --- Proxy (public front door) ---
+curl -s -o /dev/null -w "proxy /health   -> %{http_code}\n" http://localhost:80/health
+curl -s -o /dev/null -w "proxy /login    -> %{http_code}\n" -L http://localhost:80/login
+curl -s -o /dev/null -w "proxy / (dash)  -> %{http_code}\n" -L http://localhost:80/
 ```
 
-Then open `http://localhost:8081/login` on the Windows box. The tunnel forwards
-through SSH, so no firewall port is opened on the host.
+You should see `200` for everything. The dashboard root (`/`) returns `307`
+(redirect to `/login`) — follow the redirect (`-L`) and you'll get `200` on the
+login page.
 
 ---
 
-## 7. Security notes (important if exposed publicly)
+## 8. Access from your browser
 
-The stack ships dev defaults. Before exposing to the internet, change all of:
-
-- `BOOTSTRAP_OPERATOR_PASSWORD` and create real user accounts.
-- `SESSION_SECRET_KEY` (a long random string).
-- `POSTGRES_PASSWORD`.
-- Do **not** publish the internal ports (5432, 7233, 8000, 3000, 4000) to the
-  public interface — only the `PROXY_PORT`. In `docker-compose.yml`, internal
-  services bind to `0.0.0.0` for convenience; for a hardened box change their
-  `ports:` to `127.0.0.1:<port>:<port>` or drop them and rely on the nginx proxy.
-
-Recommended: put a real reverse proxy (Caddy/Traefik/nginx) in front with TLS and
-auth, or run the whole thing behind a VPN (Tailscale/WireGuard) instead of opening
-a raw port.
-
----
-
-## 8. Useful operational commands
+Get your staging server's public IP:
 
 ```bash
-# Stop / start / restart
-docker compose -f docker-compose.yml down
-docker compose -f docker-compose.yml up -d
+curl -s ifconfig.me
+```
 
-# Logs
+Open in your browser:
+
+```
+http://<PUBLIC-IP>:80/login        # if PROXY_PORT=80
+http://<PUBLIC-IP>:8081/login      # if PROXY_PORT=8081
+```
+
+**Default login** (from `.env` bootstrap operator):
+
+| Field | Value |
+|-------|-------|
+| Email | `admin@yourdomain.com` (or whatever you set) |
+| Password | `CHANGE-THIS-OPERATOR-PASSWORD` (whatever you set) |
+
+⚠️ Change these immediately after first login.
+
+---
+
+## 9. LiteLLM + NVIDIA NIM (AI model access)
+
+Ollama is **disabled** by default. The platform uses LiteLLM with the NVIDIA NIM
+endpoint `https://integrate.api.nvidia.com/v1` as the default external provider.
+
+To actually route model calls through NVIDIA NIM, set a real API key:
+
+```bash
+nano .env
+# Set: EXTERNAL_MODEL_API_KEY=your-nvidia-nim-api-key
+docker compose -f docker-compose.yml up -d litellm
+```
+
+Then enable specific models in
+`infrastructure/litellm/config.yaml` (uncomment the `model_list` example and
+fill in model names), or render the gateway config from the API:
+
+```bash
+curl -s http://localhost:8000/api/v1/models/gateway/config.yaml
+```
+
+---
+
+## 10. Operational commands
+
+```bash
+# View logs
 docker compose -f docker-compose.yml logs -f api
 docker compose -f docker-compose.yml logs -f temporal
+docker compose -f docker-compose.yml logs -f litellm
 
-# Rebuild after a code change
-docker compose -f docker-compose.yml build api dashboard
+# Restart a single service
+docker compose -f docker-compose.yml restart api
+
+# Stop everything
+docker compose -f docker-compose.yml down
+
+# Start everything again
 docker compose -f docker-compose.yml up -d
 
-# Wipe app DB and re-migrate from scratch (destroys data)
+# Full wipe (DANGER: deletes Postgres data volume)
 docker compose -f docker-compose.yml down -v
+docker compose -f docker-compose.yml up -d
+
+# Rebuild after code changes
+docker compose -f docker-compose.yml build api dashboard
 docker compose -f docker-compose.yml up -d
 ```
 
 ---
 
-## 9. Troubleshooting
+## 11. Troubleshooting
 
-- **`ERR_CONNECTION_REFUSED`:** the stack was briefly down (restarting or the
-  daemon bounced). Wait ~30 s and retry; `restart: unless-stopped` brings it back.
-- **Dashboard returns 500 / `EvalError`:** you started it *with* the dev override
-  (`docker compose up` without `-f docker-compose.yml`). Always use
-  `-f docker-compose.yml` in production.
-- **Temporal exits with `Unsupported driver 'DB=postgresql'`:** an old tag was in
-  the compose file; current code uses `DB=postgres12` and `1.29.4`.
-- **API exits `exec ./entrypoint.sh: no such file`:** the checkout had CRLF line
-  endings; on Linux this does not happen.
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| `ERR_CONNECTION_REFUSED` on port 80 | Stack still starting / daemon bounced | Wait ~30 s, then `docker compose -f docker-compose.yml ps` |
+| Port 80 already in use | Another service (traefik/dokploy) owns 80 | Set `PROXY_PORT=8081` in `.env`, rebuild, restart |
+| Dashboard returns 500 / `EvalError` | Started with `docker-compose.override.yml` (dev mode) | Always use `-f docker-compose.yml` on staging |
+| API exits `exec ./entrypoint.sh: no such file` | CRLF line endings in checkout | Re-clone on Linux (LF endings) |
+| Litellm health failing | `EXTERNAL_MODEL_API_KEY` empty or NVIDIA NIM unreachable | Set key in `.env`, restart litellm, check outbound HTTPS |
+| Temporal exits `Unsupported driver` | Old `DB=postgresql` value | Already fixed to `DB=postgres12` in compose |
+
+---
+
+## 12. Security notes (before going public)
+
+- Change `SESSION_SECRET_KEY`, `POSTGRES_PASSWORD`, `BOOTSTRAP_OPERATOR_PASSWORD`,
+  `EXTERNAL_MODEL_API_KEY`, `LITELLM_MASTER_KEY` from the defaults.
+- Do **not** publish internal ports (5432, 7233, 8000, 3000, 4000, 8001, 8002)
+  to the public interface — only `PROXY_PORT`. In `docker-compose.yml`, internal
+  services bind to `0.0.0.0`; on a hardened host, restrict their `ports:` to
+  `127.0.0.1:<port>:<port>` or remove the `ports:` blocks entirely and rely on
+  the nginx proxy.
+- For HTTPS, put Caddy / Traefik / Nginx in front of `PROXY_PORT` with TLS.
+
+---
+
+## Quick one-liner summary (after Docker is installed)
+
+```bash
+git clone <REPO> forge-sdlc && cd forge-sdlc
+cp .env.example .env && nano .env          # edit secrets + PROXY_PORT
+docker compose -f docker-compose.yml build
+docker compose -f docker-compose.yml up -d
+docker compose -f docker-compose.yml ps
+curl -s -o /dev/null -w "proxy login -> %{http_code}\n" -L http://localhost:80/login
+```
+
+Then open `http://<PUBLIC-IP>:80/login` and log in with your bootstrap operator
+credentials.
+
+Saved to: `docs/plan/linux-deployment.md`
