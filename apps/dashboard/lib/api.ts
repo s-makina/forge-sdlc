@@ -146,16 +146,21 @@ export interface AgentVersion {
   updated_at: string;
 }
 
-export interface Agent {
+/** Agent identity as returned by `GET /agents` (no versions). */
+export interface AgentSummary {
   id: number;
   slug: string;
   name: string;
   role: string;
   description: string | null;
   is_active: boolean;
-  versions: AgentVersion[];
   created_at: string;
   updated_at: string;
+}
+
+/** Full agent as returned by `GET /agents/{id}`. */
+export interface Agent extends AgentSummary {
+  versions: AgentVersion[];
 }
 
 export interface ModelProvider {

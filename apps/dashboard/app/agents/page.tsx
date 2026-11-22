@@ -1,6 +1,14 @@
-import { api, type Agent, type ListResponse } from "@/lib/api";
+import {
+  api,
+  getAgentVersions,
+  type AgentSummary,
+  type AgentVersion,
+  type ListResponse,
+} from "@/lib/api";
 
 export const dynamic = "force-dynamic";
+
+type AgentWithVersions = AgentSummary & { versions: AgentVersion[] };
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "Draft",
@@ -10,11 +18,15 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default async function AgentsPage() {
-  let agents: Agent[] = [];
+  let agents: AgentWithVersions[] = [];
   let error = false;
   try {
-    const res = await api<ListResponse<Agent>>("/agents");
-    agents = res.items;
+    const res = await api<ListResponse<AgentSummary>>("/agents");
+    const versionLists = await Promise.all(res.items.map((agent) => getAgentVersions(agent.id)));
+    agents = res.items.map((agent, index) => ({
+      ...agent,
+      versions: versionLists[index].items,
+    }));
   } catch {
     error = true;
   }
