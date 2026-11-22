@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.security import codec, hash_password
+from app.models.model_provider import ModelProvider
 from app.models.user import User
 from app.services import provider_health, seeds
 
@@ -93,6 +94,51 @@ def test_provider_credential_ref_kept_as_reference(client: TestClient, db_sessio
         assert "sk-SECRET" not in client.get("/api/v1/models/gateway/config").text
     finally:
         os.environ.pop("EXT_API_KEY", None)
+
+
+def test_apply_gateway_config_writes_generated_yaml(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _login(client, db_session)
+    _seed_models(db_session)
+    settings = get_settings()
+    config_path = tmp_path / "litellm" / "config.yaml"
+    monkeypatch.setattr(settings, "litellm_config_path", str(config_path))
+
+    provider = db_session.query(ModelProvider).filter_by(name="external-openai").one()
+    model = client.post(
+        f"/api/v1/models/providers/{provider.id}/models",
+        json={"name": "nvidia/test-model", "capabilities": ["chat"]},
+    )
+    assert model.status_code == 201, model.text
+
+    monkeypatch.setenv("EXTERNAL_MODEL_API_KEY", "nvapi-test-secret")
+    response = client.post("/api/v1/models/gateway/config/apply")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["written"] is True
+    assert response.json()["model_count"] == 1
+    content = config_path.read_text(encoding="utf-8")
+    assert "nvidia/test-model" in content
+    assert "os.environ/EXTERNAL_MODEL_API_KEY" in content
+    assert "nvapi-" not in content
+
+
+def test_apply_gateway_config_requires_config_path(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch,
+) -> None:
+    _login(client, db_session)
+    monkeypatch.setattr(get_settings(), "litellm_config_path", "")
+
+    response = client.post("/api/v1/models/gateway/config/apply")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "LITELLM_CONFIG_PATH is not configured"
 
 
 def test_routing_resolves_capable_model_and_rejects_unconfigured(

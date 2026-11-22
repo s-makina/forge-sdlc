@@ -299,6 +299,13 @@ class GatewayConfigRead(BaseModel):
     config: dict[str, Any]
 
 
+class GatewayConfigApplyResult(BaseModel):
+    written: bool
+    path: str
+    model_count: int
+    generated_at: datetime
+
+
 
 class ModelProfileList(BaseModel):
     items: list[ModelProfileRead]

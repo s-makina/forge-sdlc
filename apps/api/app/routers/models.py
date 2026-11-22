@@ -8,6 +8,8 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
+from app.core.secrets import CredentialError
 from app.db.session import get_db
 from app.deps.auth import require_user
 from app.models.capabilities import ModelCapability
@@ -17,6 +19,7 @@ from app.schemas.models import (
     CapabilityItem,
     CapabilityResult,
     ConnectivityResult,
+    GatewayConfigApplyResult,
     GatewayConfigRead,
     HealthSummary,
     ModelCapabilitiesRead,
@@ -527,3 +530,47 @@ def gateway_config_yaml(
     providers = model_providers.list_providers(db)
     body = model_gateway.render_litellm_yaml(providers)
     return Response(content=body, media_type="application/yaml")
+
+
+@router.post("/gateway/config/apply", response_model=GatewayConfigApplyResult)
+def apply_gateway_config(
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user),
+    settings: Settings = Depends(get_settings),
+) -> GatewayConfigApplyResult:
+    """Write the generated LiteLLM config to the configured path.
+
+    LiteLLM reads its config at startup, so the running proxy must be
+    reloaded or restarted before it serves the new model list.
+    """
+    path = settings.litellm_config_path.strip()
+    if not path:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="LITELLM_CONFIG_PATH is not configured",
+        )
+    providers = model_providers.list_providers(db)
+    try:
+        count = model_gateway.write_litellm_config(providers, path)
+    except CredentialError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Could not write gateway config: {exc.strerror or exc}",
+        ) from exc
+    audit.record_audit(
+        db,
+        action="model_gateway.apply",
+        entity_type="model_gateway",
+        entity_id=path,
+        actor_id=user.id,
+        actor_email=user.email,
+        details=f"Wrote {count} model(s) to gateway config",
+    )
+    return GatewayConfigApplyResult(
+        written=True,
+        path=path,
+        model_count=count,
+        generated_at=datetime.now(UTC),
+    )

@@ -46,8 +46,11 @@ services:
       BOOTSTRAP_OPERATOR_PASSWORD: ${BOOTSTRAP_OPERATOR_PASSWORD:-change-me}
       EXTERNAL_MODEL_BASE_URL: ${EXTERNAL_MODEL_BASE_URL:-https://integrate.api.nvidia.com/v1}
       EXTERNAL_MODEL_API_KEY: ${EXTERNAL_MODEL_API_KEY:-}
+      LITELLM_CONFIG_PATH: ${LITELLM_CONFIG_PATH:-/app/gateway/config.yaml}
     ports:
       - "${API_PORT:-8000}:8000"
+    volumes:
+      - ./infrastructure/litellm:/app/gateway
     depends_on:
       postgres:
         condition: service_healthy
