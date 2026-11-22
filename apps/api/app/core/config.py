@@ -42,8 +42,9 @@ class Settings(BaseSettings):
     # Default local Ollama endpoint seeded as a provider when empty
     ollama_base_url: str = "http://ollama:11434"
 
-    # Optional external OpenAI-compatible provider seeded alongside Ollama
-    external_model_base_url: str = ""
+    # Optional external OpenAI-compatible provider seeded alongside Ollama.
+    # Default points at NVIDIA NIM's OpenAI-compatible endpoint.
+    external_model_base_url: str = "https://integrate.api.nvidia.com/v1"
     external_model_credential_ref: str = "env:EXTERNAL_MODEL_API_KEY"
 
     # OpenHands (Phase 3 placeholder)

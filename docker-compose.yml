@@ -44,6 +44,8 @@ services:
       SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-forgesdlc_session}
       BOOTSTRAP_OPERATOR_EMAIL: ${BOOTSTRAP_OPERATOR_EMAIL:-operator@forgesdlc.local}
       BOOTSTRAP_OPERATOR_PASSWORD: ${BOOTSTRAP_OPERATOR_PASSWORD:-change-me}
+      EXTERNAL_MODEL_BASE_URL: ${EXTERNAL_MODEL_BASE_URL:-https://integrate.api.nvidia.com/v1}
+      EXTERNAL_MODEL_API_KEY: ${EXTERNAL_MODEL_API_KEY:-}
     ports:
       - "${API_PORT:-8000}:8000"
     depends_on:
@@ -129,18 +131,26 @@ services:
       temporal:
         condition: service_healthy
 
-  ollama:
-    image: ollama/ollama:latest
-    restart: unless-stopped
-    ports:
-      - "${OLLAMA_PORT:-11434}:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    healthcheck:
-      test: ["CMD", "ollama", "list"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
+  # ------------------------------------------------------------------
+  # Ollama (local model runtime) — DISABLED by default.
+  # Kept commented-out for local/CPU inference without external models.
+  # Uncomment to enable, then pull a model, e.g.:
+  #   docker compose exec ollama ollama pull llama3.2:3b
+  # litellm is configured to use external OpenAI-compatible endpoints
+  # instead (see infrastructure/litellm/config.yaml).
+  # ------------------------------------------------------------------
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   restart: unless-stopped
+  #   ports:
+  #     - "${OLLAMA_PORT:-11434}:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   healthcheck:
+  #     test: ["CMD", "ollama", "list"]
+  #     interval: 15s
+  #     timeout: 10s
+  #     retries: 10
 
   litellm:
     image: ghcr.io/berriai/litellm:main-latest
@@ -156,8 +166,6 @@ services:
       - "${LITELLM_PORT:-4000}:4000"
     volumes:
       - ./infrastructure/litellm/config.yaml:/app/config.yaml:ro
-    depends_on:
-      - ollama
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:4000/health/liveliness || exit 1"]
       interval: 15s
@@ -219,4 +227,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
-  ollama_data:
+  # ollama_data:
