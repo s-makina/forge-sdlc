@@ -20,7 +20,8 @@ from dataclasses import dataclass, field
 
 import httpx
 
-from app.core.secrets import CredentialError, resolve_credential
+from app.core.config import get_settings
+from app.core.secrets import CredentialError, decrypt_credential, resolve_credential
 from app.models.capabilities import ModelCapability
 from app.models.model_provider import Model, ModelProvider, ProviderType
 
@@ -38,7 +39,12 @@ class ProbeResult:
 
 
 def _auth_headers(provider: ModelProvider) -> dict[str, str]:
-    secret = resolve_credential(provider.credential_ref)
+    if provider.credential_ciphertext:
+        secret = decrypt_credential(
+            provider.credential_ciphertext, get_settings().credential_encryption_key
+        )
+    else:
+        secret = resolve_credential(provider.credential_ref)
     if secret:
         return {"Authorization": f"Bearer {secret}"}
     return {}
@@ -78,7 +84,8 @@ class ProviderProbeClient:
                     response = client.get("/models", headers=headers)
         except (httpx.HTTPError, CredentialError) as exc:
             latency = (time.perf_counter() - started) * 1000
-            return ProbeResult(status=STATUS_ERROR, latency_ms=latency, detail=type(exc).__name__)
+            detail = "CredentialError" if isinstance(exc, CredentialError) else type(exc).__name__
+            return ProbeResult(status=STATUS_ERROR, latency_ms=latency, detail=detail)
         latency = (time.perf_counter() - started) * 1000
         if response.status_code >= 400:
             return ProbeResult(

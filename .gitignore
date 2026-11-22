@@ -21,6 +21,8 @@ venv/
 # Environment
 .env
 .env.local
+# Generated LiteLLM config contains plaintext provider API keys.
+/infrastructure/litellm/config.yaml
 .env.*.local
 
 # Testing

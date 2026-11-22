@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.core.secrets import CredentialError
 from app.db.session import get_db
-from app.deps.auth import require_user
+from app.deps.auth import require_operator, require_user
 from app.models.capabilities import ModelCapability
 from app.models.model_provider import Model, ModelProfile, ModelProvider, UsageRecord
 from app.models.user import User
@@ -91,11 +91,13 @@ def _get_profile_or_404(db: Session, profile_id: int) -> ModelProfile:
 def create_provider(
     payload: ModelProviderCreate,
     db: Session = Depends(get_db),
-    user: User = Depends(require_user),
+    user: User = Depends(require_operator),
 ) -> ModelProviderRead:
     try:
         provider = model_providers.create_provider(db, payload)
     except model_providers.DuplicateName as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except CredentialError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     audit.record_audit(
         db,
@@ -123,12 +125,14 @@ def update_provider(
     provider_id: int,
     payload: ModelProviderUpdate,
     db: Session = Depends(get_db),
-    user: User = Depends(require_user),
+    user: User = Depends(require_operator),
 ) -> ModelProviderRead:
     provider = _get_provider_or_404(db, provider_id)
     try:
         updated = model_providers.update_provider(db, provider, payload)
     except model_providers.DuplicateName as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except CredentialError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     audit.record_audit(
         db,
@@ -535,7 +539,7 @@ def gateway_config_yaml(
 @router.post("/gateway/config/apply", response_model=GatewayConfigApplyResult)
 def apply_gateway_config(
     db: Session = Depends(get_db),
-    user: User = Depends(require_user),
+    user: User = Depends(require_operator),
     settings: Settings = Depends(get_settings),
 ) -> GatewayConfigApplyResult:
     """Write the generated LiteLLM config to the configured path.

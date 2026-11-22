@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 from app.models.capabilities import ModelCapability
 
@@ -26,6 +26,7 @@ class ModelProviderCreate(BaseModel):
     provider_type: ProviderTypeLiteral
     base_url: str = Field(min_length=1, max_length=1024)
     credential_ref: str | None = Field(default=None, max_length=255)
+    api_key: SecretStr | None = Field(default=None, min_length=1, max_length=4096)
     timeout_seconds: int = Field(default=60, ge=1, le=600)
     is_active: bool = True
 
@@ -46,11 +47,23 @@ class ModelProviderCreate(BaseModel):
             raise ValueError("credential_ref must use the 'env:NAME' reference form")
         return normalized
 
+    @model_validator(mode="after")
+    def _credential_source(self) -> ModelProviderCreate:
+        if (
+            self.api_key is not None
+            and self.credential_ref is not None
+            and bool(self.api_key.get_secret_value())
+        ):
+            raise ValueError("provide api_key or credential_ref, not both")
+        return self
+
 
 class ModelProviderUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     base_url: str | None = Field(default=None, min_length=1, max_length=1024)
     credential_ref: str | None = Field(default=None, max_length=255)
+    api_key: SecretStr | None = Field(default=None, min_length=1, max_length=4096)
+    clear_api_key: bool = False
     timeout_seconds: int | None = Field(default=None, ge=1, le=600)
     is_active: bool | None = None
 
@@ -71,6 +84,22 @@ class ModelProviderUpdate(BaseModel):
             raise ValueError("credential_ref must use the 'env:NAME' reference form")
         return normalized
 
+    @model_validator(mode="after")
+    def _credential_source(self) -> ModelProviderUpdate:
+        if (
+            self.api_key is not None
+            and self.credential_ref is not None
+            and bool(self.api_key.get_secret_value())
+        ):
+            raise ValueError("provide api_key or credential_ref, not both")
+        if (
+            self.api_key is not None
+            and self.clear_api_key
+            and bool(self.api_key.get_secret_value())
+        ):
+            raise ValueError("api_key and clear_api_key cannot both be provided")
+        return self
+
 
 class ModelProviderRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -80,6 +109,7 @@ class ModelProviderRead(BaseModel):
     provider_type: str
     base_url: str
     credential_ref: str | None
+    has_api_key: bool = False
     timeout_seconds: int
     is_active: bool
     created_at: datetime

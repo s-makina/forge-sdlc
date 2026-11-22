@@ -14,6 +14,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.config import get_settings
+from app.core.secrets import encrypt_credential
 from app.models.capabilities import ModelCapability
 from app.models.model_provider import Model, ModelProfile, ModelProvider
 from app.schemas.models import (
@@ -70,11 +72,17 @@ def get_provider(db: Session, provider_id: int) -> ModelProvider | None:
 def create_provider(db: Session, payload: ModelProviderCreate) -> ModelProvider:
     if db.scalar(select(ModelProvider).where(ModelProvider.name == payload.name)) is not None:
         raise DuplicateName(f"provider '{payload.name}' already exists")
+    raw_api_key = payload.api_key.get_secret_value() if payload.api_key is not None else None
     provider = ModelProvider(
         name=payload.name,
         provider_type=payload.provider_type,
         base_url=payload.base_url,
         credential_ref=payload.credential_ref,
+        credential_ciphertext=(
+            encrypt_credential(raw_api_key, get_settings().credential_encryption_key)
+            if raw_api_key is not None
+            else None
+        ),
         timeout_seconds=payload.timeout_seconds,
         is_active=payload.is_active,
     )
@@ -87,7 +95,18 @@ def create_provider(db: Session, payload: ModelProviderCreate) -> ModelProvider:
 def update_provider(
     db: Session, provider: ModelProvider, payload: ModelProviderUpdate
 ) -> ModelProvider:
-    updates = payload.model_dump(exclude_unset=True)
+    updates = payload.model_dump(exclude_unset=True, exclude={"api_key", "clear_api_key"})
+    raw_api_key = payload.api_key.get_secret_value() if payload.api_key is not None else None
+    if raw_api_key:
+        updates["credential_ciphertext"] = encrypt_credential(
+            raw_api_key, get_settings().credential_encryption_key
+        )
+        updates["credential_ref"] = None
+    elif payload.clear_api_key:
+        updates["credential_ciphertext"] = None
+    if "credential_ref" in updates and updates["credential_ref"] is not None:
+        updates["credential_ciphertext"] = None
+        updates["credential_ref"] = updates["credential_ref"].strip() or None
     new_name = updates.get("name")
     if new_name is not None and new_name != provider.name:
         clash = db.scalar(

@@ -45,8 +45,8 @@ services:
       BOOTSTRAP_OPERATOR_EMAIL: ${BOOTSTRAP_OPERATOR_EMAIL:-operator@forgesdlc.local}
       BOOTSTRAP_OPERATOR_PASSWORD: ${BOOTSTRAP_OPERATOR_PASSWORD:-change-me}
       EXTERNAL_MODEL_BASE_URL: ${EXTERNAL_MODEL_BASE_URL:-https://integrate.api.nvidia.com/v1}
-      EXTERNAL_MODEL_API_KEY: ${EXTERNAL_MODEL_API_KEY:-}
-      LITELLM_CONFIG_PATH: ${LITELLM_CONFIG_PATH:-/app/gateway/config.yaml}
+      LITELLM_CONFIG_PATH: ${LITELLM_CONFIG_PATH:-/app/gateway/config.generated.yaml}
+      CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
@@ -160,16 +160,16 @@ services:
     image: ghcr.io/berriai/litellm:main-latest
     restart: unless-stopped
     command:
-      - "--config"
-      - "/app/config.yaml"
+      - sh
+      - -c
+      - 'CONFIG=/app/config.yaml; if [ -f /app/config.generated.yaml ]; then CONFIG=/app/config.generated.yaml; fi; exec litellm --config "$$CONFIG"'
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-local}
       LITELLM_ENABLE_KEY_AUTH: "false"
-      EXTERNAL_MODEL_API_KEY: ${EXTERNAL_MODEL_API_KEY:-}
     ports:
       - "${LITELLM_PORT:-4000}:4000"
     volumes:
-      - ./infrastructure/litellm/config.yaml:/app/config.yaml:ro
+      - ./infrastructure/litellm:/app:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:4000/health/liveliness || exit 1"]
       interval: 15s

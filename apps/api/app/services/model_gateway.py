@@ -6,9 +6,8 @@ The DB is the source of truth for providers and models. This module
   the gateway can be deployed from the platform rather than hand-edited; and
 - talks to a running LiteLLM proxy's health endpoints for on-demand checks.
 
-Secrets are never rendered into the config: LiteLLM reads them from the
-environment via ``os.environ/NAME``, and the platform's credential reference
-(``env:NAME``) maps to exactly that.
+The read-only API config omits decrypted credentials. The local config apply action
+embeds decrypted keys because LiteLLM must receive the configured provider secret.
 """
 
 from __future__ import annotations
@@ -19,7 +18,8 @@ from typing import Any
 
 import yaml
 
-from app.core.secrets import CredentialError
+from app.core.config import get_settings
+from app.core.secrets import CredentialError, decrypt_credential
 from app.models.capabilities import ModelCapability
 from app.models.model_provider import ModelProvider, ProviderType
 
@@ -44,8 +44,10 @@ def _env_name(credential_ref: str | None) -> str | None:
     return name
 
 
-def render_litellm_config(providers: list[ModelProvider]) -> dict[str, Any]:
-    """Render a LiteLLM proxy configuration from active providers and models."""
+def render_litellm_config(
+    providers: list[ModelProvider], *, include_raw_credentials: bool = False
+) -> dict[str, Any]:
+    """Render a LiteLLM proxy config, optionally embedding decrypted local credentials."""
     model_list: list[dict[str, Any]] = []
     for provider in providers:
         if not provider.is_active:
@@ -54,7 +56,16 @@ def render_litellm_config(providers: list[ModelProvider]) -> dict[str, Any]:
             prefix = _LITELLM_PROVIDER_PREFIX[ProviderType(provider.provider_type)]
         except ValueError:
             continue
-        env_name = _env_name(provider.credential_ref) if provider.credential_ref else None
+        env_name = (
+            _env_name(provider.credential_ref)
+            if provider.credential_ref and not provider.credential_ciphertext
+            else None
+        )
+        raw_key = None
+        if include_raw_credentials and provider.credential_ciphertext:
+            raw_key = decrypt_credential(
+                provider.credential_ciphertext, get_settings().credential_encryption_key
+            )
         for model in provider.models:
             if not model.is_active:
                 continue
@@ -62,8 +73,12 @@ def render_litellm_config(providers: list[ModelProvider]) -> dict[str, Any]:
                 "model": f"{prefix}/{model.name}",
                 "api_base": provider.base_url,
             }
-            if env_name:
+            if raw_key:
+                params["api_key"] = raw_key
+            elif env_name:
                 params["api_key"] = f"os.environ/{env_name}"
+            elif provider.credential_ciphertext:
+                params["api_key"] = "<configured>"
             info: dict[str, Any] = {}
             for capability, flag in _CAPABILITY_FLAGS.items():
                 if capability.value in model.capabilities:
@@ -104,8 +119,14 @@ def write_litellm_config(providers: list[ModelProvider], path: str) -> int:
 
     Returns the number of models written to the config.
     """
-    config = render_litellm_config(providers)
+    config = render_litellm_config(providers, include_raw_credentials=True)
     target = Path(path).expanduser()
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(_yaml_document(config), encoding="utf-8")
+    try:
+        target.chmod(0o600)
+    except (OSError, NotImplementedError):
+        # Windows ACLs do not map to POSIX mode bits; the containing project
+        # directory must be protected by the operator on that platform.
+        pass
     return len(config["model_list"])

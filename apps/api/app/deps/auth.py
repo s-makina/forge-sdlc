@@ -34,3 +34,13 @@ def require_user(user: User | None = Depends(get_current_user)) -> User:
             detail="Not authenticated",
         )
     return user
+
+
+def require_operator(user: User = Depends(require_user)) -> User:
+    """Require an authenticated operator; otherwise 403."""
+    if not user.is_operator:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operator access required",
+        )
+    return user

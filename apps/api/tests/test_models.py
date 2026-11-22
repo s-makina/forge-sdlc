@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 import httpx
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -15,13 +13,13 @@ from app.models.user import User
 from app.services import provider_health, seeds
 
 
-def _login(client: TestClient, db: Session) -> None:
+def _login(client: TestClient, db: Session, *, is_operator: bool = True) -> None:
     user = User(
         email="models-tester@example.com",
         password_hash=hash_password("secret"),
         display_name="Models Tester",
         is_active=True,
-        is_operator=True,
+        is_operator=is_operator,
     )
     db.add(user)
     db.commit()
@@ -56,44 +54,82 @@ def test_default_providers_and_profiles_seeded(client: TestClient, db_session: S
     assert {"coding-strong", "coding-fast", "review-specialist", "vision"} <= profiles
 
 
-def test_provider_credential_ref_kept_as_reference(client: TestClient, db_session: Session) -> None:
+def test_provider_accepts_raw_api_key_without_returning_it(
+    client: TestClient, db_session: Session, monkeypatch
+) -> None:
+    _login(client, db_session)
+    monkeypatch.setattr(
+        get_settings(),
+        "credential_encryption_key",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    )
+    response = client.post(
+        "/api/v1/models/providers",
+        json={
+            "name": "nvidia-direct-key",
+            "provider_type": "openai-compatible",
+            "base_url": "https://integrate.api.nvidia.com/v1",
+            "api_key": "nvapi-raw-secret-value",
+        },
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["has_api_key"] is True
+    assert "nvapi-raw-secret-value" not in response.text
+    assert "api_key" not in response.json()
+
+    provider = db_session.query(ModelProvider).filter_by(name="nvidia-direct-key").one()
+    assert provider.credential_ciphertext is not None
+    assert "nvapi-raw-secret-value" not in provider.credential_ciphertext
+    detail = client.get(f"/api/v1/models/providers/{provider.id}")
+    assert detail.status_code == 200
+    assert "nvapi-raw-secret-value" not in detail.text
+
+
+def test_provider_management_requires_operator(client: TestClient, db_session: Session) -> None:
+    _login(client, db_session, is_operator=False)
+
+    response = client.post(
+        "/api/v1/models/providers",
+        json={
+            "name": "not-operator",
+            "provider_type": "openai-compatible",
+            "base_url": "https://api.example.com/v1",
+            "api_key": "nvapi-raw-secret-value",
+        },
+    )
+
+    assert response.status_code == 403
+    assert "nvapi-raw-secret-value" not in response.text
+
+
+def test_provider_credential_reference_remains_backward_compatible(
+    client: TestClient, db_session: Session
+) -> None:
     _login(client, db_session)
     _seed_models(db_session)
 
-    res = client.post(
+    response = client.post(
         "/api/v1/models/providers",
         json={
-            "name": "ext",
+            "name": "legacy-ref",
             "provider_type": "openai-compatible",
             "base_url": "https://api.example.com/v1",
             "credential_ref": "env:EXT_API_KEY",
         },
     )
-    assert res.status_code == 201, res.text
-    body = res.json()
-    assert body["credential_ref"] == "env:EXT_API_KEY"
-    assert "sk-" not in res.text
+    assert response.status_code == 201, response.text
+    assert response.json()["credential_ref"] == "env:EXT_API_KEY"
 
-    provider_id = body["id"]
-
-    os.environ["EXT_API_KEY"] = "sk-SECRET"
-    try:
-        model = client.post(
-            f"/api/v1/models/providers/{provider_id}/models",
-            json={"name": "my-model", "capabilities": ["chat", "tool_calling"]},
-        )
-        assert model.status_code == 201, model.text
-
-        config = client.get("/api/v1/models/gateway/config").json()["config"]
-        entry = next(
-            e for e in config["model_list"] if e["model_name"] == "my-model"
-        )
-        params = entry["litellm_params"]
-        assert params["model"] == "openai/my-model"
-        assert params["api_key"] == "os.environ/EXT_API_KEY"
-        assert "sk-SECRET" not in client.get("/api/v1/models/gateway/config").text
-    finally:
-        os.environ.pop("EXT_API_KEY", None)
+    model = client.post(
+        f"/api/v1/models/providers/{response.json()['id']}/models",
+        json={"name": "legacy-model", "capabilities": ["chat", "tool_calling"]},
+    )
+    assert model.status_code == 201, model.text
+    config = client.get("/api/v1/models/gateway/config").json()["config"]
+    entry = next(item for item in config["model_list"] if item["model_name"] == "legacy-model")
+    assert entry["litellm_params"]["model"] == "openai/legacy-model"
+    assert entry["litellm_params"]["api_key"] == "os.environ/EXT_API_KEY"
 
 
 def test_apply_gateway_config_writes_generated_yaml(
@@ -105,6 +141,11 @@ def test_apply_gateway_config_writes_generated_yaml(
     _login(client, db_session)
     _seed_models(db_session)
     settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "credential_encryption_key",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    )
     config_path = tmp_path / "litellm" / "config.yaml"
     monkeypatch.setattr(settings, "litellm_config_path", str(config_path))
 
@@ -115,7 +156,16 @@ def test_apply_gateway_config_writes_generated_yaml(
     )
     assert model.status_code == 201, model.text
 
-    monkeypatch.setenv("EXTERNAL_MODEL_API_KEY", "nvapi-test-secret")
+    monkeypatch.setattr(
+        settings,
+        "credential_encryption_key",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    )
+    credential = client.patch(
+        f"/api/v1/models/providers/{provider.id}",
+        json={"api_key": "nvapi-direct-key"},
+    )
+    assert credential.status_code == 200, credential.text
     response = client.post("/api/v1/models/gateway/config/apply")
 
     assert response.status_code == 200, response.text
@@ -123,8 +173,8 @@ def test_apply_gateway_config_writes_generated_yaml(
     assert response.json()["model_count"] == 1
     content = config_path.read_text(encoding="utf-8")
     assert "nvidia/test-model" in content
-    assert "os.environ/EXTERNAL_MODEL_API_KEY" in content
-    assert "nvapi-" not in content
+    assert "nvapi-direct-key" in content
+    assert "credential_ciphertext" not in content
 
 
 def test_apply_gateway_config_requires_config_path(
@@ -138,7 +188,7 @@ def test_apply_gateway_config_requires_config_path(
     response = client.post("/api/v1/models/gateway/config/apply")
 
     assert response.status_code == 409
-    assert response.json()["detail"] == "LITELLM_CONFIG_PATH is not configured"
+    assert response.json()["error"]["message"] == "LITELLM_CONFIG_PATH is not configured"
 
 
 def test_routing_resolves_capable_model_and_rejects_unconfigured(

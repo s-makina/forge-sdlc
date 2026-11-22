@@ -176,6 +176,7 @@ export interface ModelProvider {
   provider_type: string;
   base_url: string;
   credential_ref: string | null;
+  has_api_key: boolean;
   timeout_seconds: number;
   is_active: boolean;
   created_at: string;
@@ -278,6 +279,11 @@ export interface CapabilityInfo {
 export const getCapabilities = () => api<{ items: CapabilityInfo[] }>("/models/capabilities");
 export const checkProvider = (providerId: number) =>
   api<ProviderHealth>(`/models/providers/${providerId}/check`, { method: "POST" });
+export const applyGatewayConfig = () =>
+  api<{ written: boolean; path: string; model_count: number; generated_at: string }>(
+    "/models/gateway/config/apply",
+    { method: "POST" },
+  );
 
 export const getTools = () => api<ListResponse<ToolInfo>>("/registries/tools");
 export const getSkills = () => api<ListResponse<SkillInfo>>("/registries/skills");

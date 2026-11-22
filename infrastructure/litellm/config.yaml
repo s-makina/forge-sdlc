@@ -16,17 +16,9 @@
 # Secrets are never written here; api_key always references the environment.
 #
 # ------------------------------------------------------------------
-# Default provider: NVIDIA NIM (OpenAI-compatible) — https://integrate.api.nvidia.com/v1
-# This endpoint is reachable from litellm. Set EXTERNAL_MODEL_API_KEY in .env.
-# Example — uncomment and fill in real model names + key to enable:
-#
-# model_list:
-#   - model_name: nvidia-gpt
-#     litellm_params:
-#       model: openai/meta-llama-3.1-70b-instruct
-#       api_base: https://integrate.api.nvidia.com/v1
-#       api_key: "os.environ/EXTERNAL_MODEL_API_KEY"
-#
+# Safe fallback configuration for LiteLLM before a generated config is applied.
+# Add providers and models in the ForgeSDLC Models page, then restart LiteLLM.
+# The generated config is stored separately in ignored config.generated.yaml.
 # ------------------------------------------------------------------
 # Ollama (local) is DISABLED by default — see docker-compose.yml. To re-enable,
 # uncomment the ollama service there and add an entry here, e.g.:

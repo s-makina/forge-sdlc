@@ -5,11 +5,15 @@ against an in-memory engine in CI. Instead we replay 0002's ``upgrade()`` agains
 a recording Operations object and assert the set of tables, columns and indexes
 matches ``Base.metadata``. This catches the common, dangerous class of drift
 where a model adds a column/table that the migration forgot.
+
+Columns added by *later* migrations (e.g. ``credential_ciphertext`` in 0005)
+are expected to be absent from 0002 and are excluded from the comparison.
 """
 
 from __future__ import annotations
 
 import importlib.util
+import re
 from pathlib import Path
 
 from sqlalchemy import Column
@@ -17,7 +21,25 @@ from sqlalchemy.orm import configure_mappers
 
 from app.db.session import Base
 
-_PATH = str(Path(__file__).resolve().parents[1] / "alembic" / "versions" / "0002_agents_models.py")
+_VERSIONS_DIR = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+
+
+def _later_added_columns() -> dict[str, set[str]]:
+    """Collect columns added by migrations after 0002 via ``op.add_column``."""
+    added: dict[str, set[str]] = {}
+    for path in sorted(_VERSIONS_DIR.glob("*.py")):
+        if path.name == "0002_agents_models.py":
+            continue
+        source = path.read_text(encoding="utf-8")
+        for match in re.finditer(
+            r'op\.add_column\(\s*"([^"]+)"\s*,\s*sa\.Column\(\s*"([^"]+)"', source
+        ):
+            table, column = match.group(1), match.group(2)
+            added.setdefault(table, set()).add(column)
+    return added
+
+
+_PATH = str(_VERSIONS_DIR / "0002_agents_models.py")
 spec = importlib.util.spec_from_file_location("migration_0002", _PATH)
 migration = importlib.util.module_from_spec(spec)
 assert spec.loader is not None
@@ -37,6 +59,11 @@ class RecordingOps:
         for item in columns:
             if isinstance(item, Column):
                 self.tables[name].add(item.name)
+
+    def add_column(self, table_name: str, column: object, **_kw: object) -> None:
+        self.tables.setdefault(table_name, set())
+        if isinstance(column, Column):
+            self.tables[table_name].add(column.name)
 
     def create_index(
         self,
@@ -76,17 +103,20 @@ def test_0002_tables_and_columns_match_orm() -> None:
     migration.upgrade()
 
     orm = _orm_metadata()
+    later_added = _later_added_columns()
     for table_name, columns in recorded.tables.items():
         assert table_name in orm, f"migration creates unknown table {table_name}"
-        missing = columns - orm[table_name]
-        extra = orm[table_name] - columns
+        expected_orm = orm[table_name] - later_added.get(table_name, set())
+        missing = columns - expected_orm
+        extra = expected_orm - columns
         assert not missing, f"{table_name}: migration missing columns {sorted(missing)}"
         assert not extra, f"{table_name}: migration has unexpected columns {sorted(extra)}"
 
     # Every table in the ORM that is created by this migration is present.
     for table_name, columns in orm.items():
         if table_name in recorded.tables:
-            assert columns == recorded.tables[table_name]
+            expected_orm = columns - later_added.get(table_name, set())
+            assert expected_orm == recorded.tables[table_name]
 
 
 def test_0002_indexes_present() -> None:

@@ -38,11 +38,10 @@ class CheckKind(StrEnum):
 
 
 class ModelProvider(Base, TimestampMixin):
-    """A model endpoint plus a *reference* to its credential.
+    """A model endpoint plus an optional environment reference or encrypted API key.
 
-    Credentials are never stored here: ``credential_ref`` is an indirection such
-    as ``env:OPENAI_API_KEY`` which the secret resolver turns into a value at call
-    time, and which is redacted from every API response.
+    The encrypted value is never returned by the API and is decrypted only when
+    making a provider request or rendering the local LiteLLM config.
     """
 
     __tablename__ = "model_providers"
@@ -52,8 +51,13 @@ class ModelProvider(Base, TimestampMixin):
     provider_type: Mapped[str] = mapped_column(String(32), nullable=False)
     base_url: Mapped[str] = mapped_column(String(1024), nullable=False)
     credential_ref: Mapped[str | None] = mapped_column(String(255))
+    credential_ciphertext: Mapped[str | None] = mapped_column(Text)
     timeout_seconds: Mapped[int] = mapped_column(Integer, nullable=False, server_default="60")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="1")
+
+    @property
+    def has_api_key(self) -> bool:
+        return self.credential_ciphertext is not None or self.credential_ref is not None
 
     models: Mapped[list[Model]] = relationship(
         back_populates="provider", cascade="all, delete-orphan"

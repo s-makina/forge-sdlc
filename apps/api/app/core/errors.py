@@ -44,6 +44,10 @@ def _json_safe(value: object) -> object:
 
 async def validation_exception_handler(request: Request, exc: Exception) -> Response:
     details = _json_safe(exc.errors()) if isinstance(exc, RequestValidationError) else None
+    if isinstance(details, list):
+        for error in details:
+            if isinstance(error, dict) and "api_key" in error.get("loc", []):
+                error.pop("input", None)
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content=_error_payload(

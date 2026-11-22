@@ -9,6 +9,7 @@ import {
   type SkillInfo,
   type ToolInfo,
 } from "@/lib/api";
+import { ApplyGatewayConfigButton } from "@/components/apply-gateway-config-button";
 import { AssignProfileForm } from "@/components/assign-profile-form";
 import { CheckProviderButton } from "@/components/check-provider-button";
 import { CreateModelForm } from "@/components/create-model-form";
@@ -67,6 +68,15 @@ export default async function ModelsPage() {
       </div>
 
       <div className="card">
+        <h2>LiteLLM Gateway</h2>
+        <p className="muted">
+          Write the current provider and model list to the mounted LiteLLM config. The LiteLLM
+          container must then be restarted before the changed model list is active.
+        </p>
+        <ApplyGatewayConfigButton />
+      </div>
+
+      <div className="card">
         <h2>Providers &amp; Health</h2>
         <table>
           <thead>
@@ -88,7 +98,9 @@ export default async function ModelsPage() {
                   <td>{provider.name}</td>
                   <td>{provider.provider_type}</td>
                   <td className="muted">{provider.base_url}</td>
-                  <td className="muted">{provider.credential_ref ?? "none"}</td>
+                  <td className="muted">
+                    {provider.has_api_key ? "Configured" : provider.credential_ref ?? "none"}
+                  </td>
                   <td>
                     <span className={"badge " + (healthRow?.status === "ok" ? "ok" : "muted")}>
                       {healthRow?.status ?? "unchecked"}

@@ -9,7 +9,7 @@ export function CreateProviderForm() {
   const [name, setName] = useState("");
   const [providerType, setProviderType] = useState("openai-compatible");
   const [baseUrl, setBaseUrl] = useState("");
-  const [credentialRef, setCredentialRef] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [timeoutSeconds, setTimeoutSeconds] = useState("120");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -23,12 +23,12 @@ export function CreateProviderForm() {
         name,
         provider_type: providerType,
         base_url: baseUrl,
-        credential_ref: credentialRef || null,
+        api_key: apiKey || null,
         timeout_seconds: Number(timeoutSeconds),
       });
       setName("");
       setBaseUrl("");
-      setCredentialRef("");
+      setApiKey("");
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create provider");
@@ -73,11 +73,13 @@ export function CreateProviderForm() {
       </div>
       <div>
         <label>
-          Credential reference
+          API key (optional)
           <input
-            value={credentialRef}
-            onChange={(e) => setCredentialRef(e.target.value)}
-            placeholder="env:EXTERNAL_MODEL_API_KEY"
+            type="password"
+            autoComplete="off"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="Paste provider API key"
           />
         </label>
       </div>
@@ -94,8 +96,8 @@ export function CreateProviderForm() {
         </label>
       </div>
       <p className="muted">
-        Secrets are never stored here. Set the key in <code>.env</code> and reference it as
-        <code> env:NAME</code>.
+        API keys are encrypted before storage and are never shown again. Enter the raw key here;
+        writing the LiteLLM config will place it in the local config file.
       </p>
       {error && <p className="error">{error}</p>}
       <button type="submit" disabled={submitting}>

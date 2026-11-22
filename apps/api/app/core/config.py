@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     litellm_base_url: str = "http://litellm:4000"
     litellm_master_key: str = ""
     litellm_config_path: str = ""
+    # Fernet key (or 32-byte hex) used to encrypt provider API keys at rest.
+    credential_encryption_key: str = ""
     provider_probe_timeout_seconds: int = 10
 
     # Default local Ollama endpoint seeded as a provider when empty
@@ -45,7 +47,7 @@ class Settings(BaseSettings):
     # Optional external OpenAI-compatible provider seeded alongside Ollama.
     # Default points at NVIDIA NIM's OpenAI-compatible endpoint.
     external_model_base_url: str = "https://integrate.api.nvidia.com/v1"
-    external_model_credential_ref: str = "env:EXTERNAL_MODEL_API_KEY"
+    external_model_credential_ref: str = ""
 
     # OpenHands (Phase 3 placeholder)
     openhands_base_url: str = ""
