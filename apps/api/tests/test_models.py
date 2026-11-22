@@ -128,7 +128,7 @@ def test_provider_credential_reference_remains_backward_compatible(
     assert model.status_code == 201, model.text
     config = client.get("/api/v1/models/gateway/config").json()["config"]
     entry = next(item for item in config["model_list"] if item["model_name"] == "legacy-model")
-    assert entry["litellm_params"]["model"] == "legacy-model"
+    assert entry["litellm_params"]["model"] == "openai/legacy-model"
     assert entry["litellm_params"]["api_key"] == "os.environ/EXT_API_KEY"
 
 

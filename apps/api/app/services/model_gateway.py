@@ -74,7 +74,7 @@ def render_litellm_config(
             if not model.is_active:
                 continue
             params: dict[str, Any] = {
-                "model": model.name,
+                "model": f"{_LITELLM_PROVIDER_PREFIX[provider_type]}/{model.name}",
                 "api_base": provider.base_url,
             }
             if raw_key:
