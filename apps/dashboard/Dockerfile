@@ -7,7 +7,10 @@ FROM base AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/dashboard/package.json apps/dashboard/package.json
-RUN pnpm install --frozen-lockfile --filter dashboard...
+# Install the full workspace so pnpm materialises the .pnpm virtual store and
+# per-package symlinks (e.g. next) correctly. --config.dedupe-injected-deps=false
+# works around pnpm 12's injected-deps hoisting regression in container builds.
+RUN pnpm install --frozen-lockfile --config.dedupe-injected-deps=false
 
 FROM base AS builder
 WORKDIR /app
