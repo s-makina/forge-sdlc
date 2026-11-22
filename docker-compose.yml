@@ -47,6 +47,7 @@ services:
       EXTERNAL_MODEL_BASE_URL: ${EXTERNAL_MODEL_BASE_URL:-https://integrate.api.nvidia.com/v1}
       LITELLM_CONFIG_PATH: ${LITELLM_CONFIG_PATH:-/app/gateway/config.generated.yaml}
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-local}
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:

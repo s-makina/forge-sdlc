@@ -16,9 +16,15 @@ export function ApplyGatewayConfigButton() {
     setError(null);
     try {
       const result = await applyGatewayConfig();
-      setMessage(
-        `Wrote ${result.model_count} model(s) to the LiteLLM config. Restart LiteLLM to load them.`,
-      );
+      if (result.reloaded) {
+        setMessage(
+          `Wrote ${result.model_count} model(s) to the LiteLLM config and reloaded the proxy.`,
+        );
+      } else {
+        setMessage(
+          `Wrote ${result.model_count} model(s) to the LiteLLM config. Restart LiteLLM to load them.`,
+        );
+      }
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to write gateway config");

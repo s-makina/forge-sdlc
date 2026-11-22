@@ -10,7 +10,7 @@ from app.core.config import get_settings
 from app.core.security import codec, hash_password
 from app.models.model_provider import ModelProvider
 from app.models.user import User
-from app.services import provider_health, seeds
+from app.services import model_gateway, provider_health, seeds
 
 
 def _login(client: TestClient, db: Session, *, is_operator: bool = True) -> None:
@@ -189,6 +189,88 @@ def test_apply_gateway_config_requires_config_path(
 
     assert response.status_code == 409
     assert response.json()["error"]["message"] == "LITELLM_CONFIG_PATH is not configured"
+
+
+def test_apply_gateway_config_reloads_litellm(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _login(client, db_session)
+    _seed_models(db_session)
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "credential_encryption_key",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    )
+    monkeypatch.setattr(settings, "litellm_base_url", "http://litellm:4000")
+    monkeypatch.setattr(settings, "litellm_master_key", "sk-litellm-local")
+    config_path = tmp_path / "litellm" / "config.yaml"
+    monkeypatch.setattr(settings, "litellm_config_path", str(config_path))
+    monkeypatch.setattr(model_gateway, "reload_litellm", lambda *a, **k: True)
+
+    provider = db_session.query(ModelProvider).filter_by(name="external-openai").one()
+    model = client.post(
+        f"/api/v1/models/providers/{provider.id}/models",
+        json={"name": "nvidia/test-model", "capabilities": ["chat"]},
+    )
+    assert model.status_code == 201, model.text
+
+    credential = client.patch(
+        f"/api/v1/models/providers/{provider.id}",
+        json={"api_key": "nvapi-direct-key"},
+    )
+    assert credential.status_code == 200, credential.text
+    response = client.post("/api/v1/models/gateway/config/apply")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["written"] is True
+    assert response.json()["reloaded"] is True
+    assert response.json()["model_count"] == 1
+
+
+def test_apply_gateway_config_reload_fails_gracefully(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch,
+    tmp_path,
+) -> None:
+    _login(client, db_session)
+    _seed_models(db_session)
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings,
+        "credential_encryption_key",
+        "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    )
+    monkeypatch.setattr(settings, "litellm_base_url", "http://litellm:4000")
+    monkeypatch.setattr(settings, "litellm_master_key", "sk-litellm-local")
+    config_path = tmp_path / "litellm" / "config.yaml"
+    monkeypatch.setattr(settings, "litellm_config_path", str(config_path))
+    monkeypatch.setattr(model_gateway, "reload_litellm", lambda *a, **k: False)
+
+    provider = db_session.query(ModelProvider).filter_by(name="external-openai").one()
+    model = client.post(
+        f"/api/v1/models/providers/{provider.id}/models",
+        json={"name": "nvidia/test-model", "capabilities": ["chat"]},
+    )
+    assert model.status_code == 201, model.text
+
+    credential = client.patch(
+        f"/api/v1/models/providers/{provider.id}",
+        json={"api_key": "nvapi-direct-key"},
+    )
+    assert credential.status_code == 200, credential.text
+    response = client.post("/api/v1/models/gateway/config/apply")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["written"] is True
+    assert response.json()["reloaded"] is False
+    assert response.json()["model_count"] == 1
+    content = config_path.read_text(encoding="utf-8")
+    assert "nvidia/test-model" in content
 
 
 def test_routing_resolves_capable_model_and_rejects_unconfigured(

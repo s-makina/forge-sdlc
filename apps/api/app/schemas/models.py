@@ -333,6 +333,7 @@ class GatewayConfigApplyResult(BaseModel):
     written: bool
     path: str
     model_count: int
+    reloaded: bool = False
     generated_at: datetime
 
 
