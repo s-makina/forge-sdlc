@@ -55,8 +55,10 @@ def render_litellm_config(
         if not provider.is_active:
             continue
         try:
-            prefix = _LITELLM_PROVIDER_PREFIX[ProviderType(provider.provider_type)]
+            provider_type = ProviderType(provider.provider_type)
         except ValueError:
+            continue
+        if provider_type not in _LITELLM_PROVIDER_PREFIX:
             continue
         env_name = (
             _env_name(provider.credential_ref)
