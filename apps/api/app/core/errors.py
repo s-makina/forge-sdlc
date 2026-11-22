@@ -26,8 +26,24 @@ async def http_exception_handler(request: Request, exc: Exception) -> Response:
     )
 
 
+def _json_safe(value: object) -> object:
+    """Recursively replace non-JSON-serializable values with their ``str()`` form.
+
+    Validator exceptions can leak into a ``RequestValidationError``'s ``ctx``,
+    which ``JSONResponse`` (via ``json.dumps``) cannot serialize. Normalize those
+    up front so validation failures always return a clean 422 instead of a 500.
+    """
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    return str(value)
+
+
 async def validation_exception_handler(request: Request, exc: Exception) -> Response:
-    details = exc.errors() if isinstance(exc, RequestValidationError) else None
+    details = _json_safe(exc.errors()) if isinstance(exc, RequestValidationError) else None
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content=_error_payload(
