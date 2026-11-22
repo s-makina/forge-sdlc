@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { deleteModel, type CapabilityInfo, type ModelInfo } from "@/lib/api";
+import { deleteModel, testModel, type CapabilityInfo, type ModelInfo } from "@/lib/api";
 import { EditModelForm } from "@/components/edit-model-form";
 
 export function ModelsList({
@@ -16,6 +16,14 @@ export function ModelsList({
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [deleteConfirming, setDeleteConfirming] = useState<number | null>(null);
+  const [testingId, setTestingId] = useState<number | null>(null);
+  const [testResult, setTestResult] = useState<{
+    modelId: number;
+    ok: boolean;
+    latency_ms: number;
+    response_preview?: string;
+    error?: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function handleDelete(modelId: number) {
@@ -29,6 +37,25 @@ export function ModelsList({
       setError(err instanceof Error ? err.message : "Failed to delete model");
       setDeletingId(null);
       setDeleteConfirming(null);
+    }
+  }
+
+  async function handleTest(modelId: number) {
+    setError(null);
+    setTestingId(modelId);
+    setTestResult(null);
+    try {
+      const result = await testModel(modelId);
+      setTestResult({ modelId, ...result });
+    } catch (err) {
+      setTestResult({
+        modelId,
+        ok: false,
+        error: err instanceof Error ? err.message : "Test failed",
+        latency_ms: 0,
+      });
+    } finally {
+      setTestingId(null);
     }
   }
 
@@ -51,6 +78,7 @@ export function ModelsList({
             <th>Provider</th>
             <th>Capabilities</th>
             <th>Status</th>
+            <th>Test</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -84,6 +112,43 @@ export function ModelsList({
                   >
                     {model.is_active ? "Active" : "Inactive"}
                   </span>
+                </td>
+                <td>
+                  {model.id === testingId ? (
+                    <button type="button" disabled>Testing...</button>
+                  ) : testResult && testResult.modelId === model.id ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleTest(model.id)}
+                        disabled={isEditing || isDeleting}
+                      >
+                        Test again
+                      </button>{" "}
+                      <div className="test-result">
+                        {testResult.ok ? (
+                          <span className="ok">
+                            ✓ OK ({testResult.latency_ms}ms)
+                          </span>
+                        ) : (
+                          <span className="bad">✗ {testResult.error}</span>
+                        )}
+                        {testResult.response_preview && (
+                          <span className="muted mono">
+                            &quot;{testResult.response_preview}&quot;
+                          </span>
+                        )}
+                      </div>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleTest(model.id)}
+                      disabled={isEditing || isDeleting}
+                    >
+                      Test
+                    </button>
+                  )}
                 </td>
                 <td>
                   {isEditing ? (

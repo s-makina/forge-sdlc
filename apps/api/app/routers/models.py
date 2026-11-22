@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
@@ -251,6 +252,29 @@ def delete_model_route(
         actor_email=user.email,
         details=f"Deleted model '{model.name}'",
     )
+
+
+@router.post("/items/{model_id}/test", response_model=dict[str, Any])
+def test_model(
+    model_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Test a model by calling LiteLLM's chat completions endpoint."""
+    model = _get_model_or_404(db, model_id)
+    provider = model.provider
+    result = model_gateway.test_litellm_model(model, provider, settings)
+    audit.record_audit(
+        db,
+        action="model.test",
+        entity_type="model",
+        entity_id=str(model_id),
+        actor_id=user.id,
+        actor_email=user.email,
+        details=f"Tested model '{model.name}': ok={result['ok']}",
+    )
+    return result
 
 
 @router.get("/profiles", response_model=ModelProfileList)

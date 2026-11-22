@@ -268,6 +268,11 @@ export const updateModel = (modelId: number, data: unknown) =>
   api<ModelInfo>(`/models/items/${modelId}`, { method: "PATCH", body: data });
 export const deleteModel = (modelId: number) =>
   api<null>(`/models/items/${modelId}`, { method: "DELETE" });
+export const testModel = (modelId: number) =>
+  api<{ ok: boolean; latency_ms: number; response_preview?: string; error?: string }>(
+    `/models/items/${modelId}/test`,
+    { method: "POST" },
+  );
 export const getModelProfiles = () => api<ListResponse<ModelProfile>>("/models/profiles");
 export const createModelProfile = (data: unknown) =>
   api<ModelProfile>("/models/profiles", { method: "POST", body: data });

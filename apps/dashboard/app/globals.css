@@ -103,6 +103,11 @@ ul.list li {
   color: #c53030;
   padding: 0.5rem 0;
 }
+
+.test-result {
+  margin-top: 0.25rem;
+  font-size: 0.85rem;
+}
 .muted {
   color: #718096;
   font-size: 0.9rem;

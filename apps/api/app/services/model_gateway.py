@@ -14,13 +14,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 from typing import Any
 
 import httpx
 import yaml
 
 from app.core.config import get_settings
-from app.core.secrets import CredentialError, decrypt_credential
+from app.core.secrets import CredentialError, decrypt_credential, resolve_credential
 from app.models.capabilities import ModelCapability
 from app.models.model_provider import ModelProvider, ProviderType
 
@@ -154,3 +155,76 @@ def reload_litellm(
         return response.status_code == 200
     except httpx.HTTPError:
         return False
+
+
+def test_litellm_model(
+    model: Model, provider: ModelProvider, settings: Settings
+) -> dict[str, Any]:
+    """Test a model by calling LiteLLM's chat completions endpoint.
+
+    Returns a dict with ``ok``, ``latency_ms``, and either ``response_preview``
+    or ``error``.
+    """
+    from app.models.model_provider import Model
+
+    prefix = _LITELLM_PROVIDER_PREFIX.get(ProviderType(provider.provider_type))
+    if prefix is None:
+        return {
+            "ok": False,
+            "error": f"Unsupported provider type: {provider.provider_type}",
+            "latency_ms": 0,
+        }
+
+    api_key: str | None = None
+    if provider.credential_ciphertext:
+        try:
+            api_key = decrypt_credential(
+                provider.credential_ciphertext, settings.credential_encryption_key
+            )
+        except CredentialError as exc:
+            return {"ok": False, "error": str(exc), "latency_ms": 0}
+    elif provider.credential_ref:
+        try:
+            api_key = resolve_credential(provider.credential_ref)
+        except CredentialError as exc:
+            return {"ok": False, "error": str(exc), "latency_ms": 0}
+
+    headers: dict[str, str] = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    body = {
+        "model": model.name,
+        "messages": [{"role": "user", "content": "test"}],
+        "max_tokens": 10,
+    }
+
+    start = perf_counter()
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            response = client.post(
+                f"{settings.litellm_base_url.rstrip('/')}/v1/chat/completions",
+                headers=headers,
+                json=body,
+            )
+        latency_ms = round((perf_counter() - start) * 1000)
+        if response.status_code >= 400:
+            return {
+                "ok": False,
+                "error": f"HTTP {response.status_code}: {response.text[:200]}",
+                "latency_ms": latency_ms,
+            }
+        data = response.json()
+        content = ""
+        try:
+            content = data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError):
+            content = str(data)[:200]
+        return {
+            "ok": True,
+            "latency_ms": latency_ms,
+            "response_preview": content[:200],
+        }
+    except httpx.HTTPError as exc:
+        latency_ms = round((perf_counter() - start) * 1000)
+        return {"ok": False, "error": str(exc), "latency_ms": latency_ms}
