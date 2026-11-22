@@ -20,10 +20,10 @@ from typing import Any
 import httpx
 import yaml
 
-from app.core.config import get_settings
-from app.core.secrets import CredentialError, decrypt_credential, resolve_credential
+from app.core.config import Settings, get_settings
+from app.core.secrets import CredentialError, decrypt_credential
 from app.models.capabilities import ModelCapability
-from app.models.model_provider import ModelProvider, ProviderType
+from app.models.model_provider import Model, ModelProvider, ProviderType
 
 _LITELLM_PROVIDER_PREFIX = {
     ProviderType.OLLAMA: "ollama_chat",
@@ -165,8 +165,6 @@ def test_litellm_model(
     Returns a dict with ``ok``, ``latency_ms``, and either ``response_preview``
     or ``error``.
     """
-    from app.models.model_provider import Model
-
     prefix = _LITELLM_PROVIDER_PREFIX.get(ProviderType(provider.provider_type))
     if prefix is None:
         return {
@@ -175,23 +173,9 @@ def test_litellm_model(
             "latency_ms": 0,
         }
 
-    api_key: str | None = None
-    if provider.credential_ciphertext:
-        try:
-            api_key = decrypt_credential(
-                provider.credential_ciphertext, settings.credential_encryption_key
-            )
-        except CredentialError as exc:
-            return {"ok": False, "error": str(exc), "latency_ms": 0}
-    elif provider.credential_ref:
-        try:
-            api_key = resolve_credential(provider.credential_ref)
-        except CredentialError as exc:
-            return {"ok": False, "error": str(exc), "latency_ms": 0}
-
     headers: dict[str, str] = {"Content-Type": "application/json"}
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+    if settings.litellm_master_key:
+        headers["Authorization"] = f"Bearer {settings.litellm_master_key}"
 
     body = {
         "model": model.name,
