@@ -16,6 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
 import yaml
 
 from app.core.config import get_settings
@@ -130,3 +131,26 @@ def write_litellm_config(providers: list[ModelProvider], path: str) -> int:
         # directory must be protected by the operator on that platform.
         pass
     return len(config["model_list"])
+
+
+def reload_litellm(
+    base_url: str,
+    master_key: str | None = None,
+    timeout: float = 10.0,
+    transport: httpx.BaseTransport | None = None,
+) -> bool:
+    """Ask the running LiteLLM proxy to reload its config file.
+
+    Returns True if the reload was accepted (HTTP 200), False otherwise.
+    A False return means the config file was written but LiteLLM still needs
+    a manual restart to pick it up.
+    """
+    headers: dict[str, str] = {}
+    if master_key:
+        headers["Authorization"] = f"Bearer {master_key}"
+    try:
+        with httpx.Client(timeout=timeout, transport=transport) as client:
+            response = client.get(f"{base_url.rstrip('/')}/config/reload", headers=headers)
+        return response.status_code == 200
+    except httpx.HTTPError:
+        return False

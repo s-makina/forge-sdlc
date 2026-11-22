@@ -563,6 +563,11 @@ def apply_gateway_config(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Could not write gateway config: {exc.strerror or exc}",
         ) from exc
+
+    reloaded = model_gateway.reload_litellm(
+        settings.litellm_base_url, settings.litellm_master_key
+    )
+
     audit.record_audit(
         db,
         action="model_gateway.apply",
@@ -570,11 +575,12 @@ def apply_gateway_config(
         entity_id=path,
         actor_id=user.id,
         actor_email=user.email,
-        details=f"Wrote {count} model(s) to gateway config",
+        details=f"Wrote {count} model(s) to gateway config; reloaded={reloaded}",
     )
     return GatewayConfigApplyResult(
         written=True,
         path=path,
         model_count=count,
+        reloaded=reloaded,
         generated_at=datetime.now(UTC),
     )

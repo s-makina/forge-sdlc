@@ -280,10 +280,13 @@ export const getCapabilities = () => api<{ items: CapabilityInfo[] }>("/models/c
 export const checkProvider = (providerId: number) =>
   api<ProviderHealth>(`/models/providers/${providerId}/check`, { method: "POST" });
 export const applyGatewayConfig = () =>
-  api<{ written: boolean; path: string; model_count: number; generated_at: string }>(
-    "/models/gateway/config/apply",
-    { method: "POST" },
-  );
+  api<{
+    written: boolean;
+    path: string;
+    model_count: number;
+    reloaded: boolean;
+    generated_at: string;
+  }>("/models/gateway/config/apply", { method: "POST" });
 
 export const getTools = () => api<ListResponse<ToolInfo>>("/registries/tools");
 export const getSkills = () => api<ListResponse<SkillInfo>>("/registries/skills");
