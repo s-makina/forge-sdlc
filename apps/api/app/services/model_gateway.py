@@ -151,7 +151,7 @@ def reload_litellm(
         headers["Authorization"] = f"Bearer {master_key}"
     try:
         with httpx.Client(timeout=timeout, transport=transport) as client:
-            response = client.get(f"{base_url.rstrip('/')}/config/reload", headers=headers)
+            response = client.post(f"{base_url.rstrip('/')}/config/reload", headers=headers)
         return response.status_code == 200
     except httpx.HTTPError:
         return False
@@ -178,7 +178,7 @@ def test_litellm_model(
         headers["Authorization"] = f"Bearer {settings.litellm_master_key}"
 
     body = {
-        "model": model.name,
+        "model": f"{prefix}/{model.name}",
         "messages": [{"role": "user", "content": "test"}],
         "max_tokens": 10,
     }
