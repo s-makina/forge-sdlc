@@ -43,12 +43,25 @@ def test_login_me_logout(client: TestClient, db_session: Session) -> None:
 
 def test_login_rejects_bad_password(client: TestClient, db_session: Session) -> None:
     _seed_operator(db_session)
-    res = client.post(
-        "/api/v1/auth/login", json={"email": "op@example.com", "password": "wrong"}
-    )
+    res = client.post("/api/v1/auth/login", json={"email": "op@example.com", "password": "wrong"})
     assert res.status_code == 401
 
 
 def test_login_rejects_unknown_user(client: TestClient) -> None:
     res = client.post("/api/v1/auth/login", json={"email": "nobody@example.com", "password": "x"})
     assert res.status_code == 401
+
+
+def test_login_accepts_reserved_local_domain(client: TestClient, db_session: Session) -> None:
+    _seed_operator(db_session, email="operator@forgesdlc.local", password="secret")
+    res = client.post(
+        "/api/v1/auth/login",
+        json={"email": "operator@forgesdlc.local", "password": "secret"},
+    )
+    assert res.status_code == 200
+    assert res.json()["is_operator"] is True
+
+
+def test_login_rejects_malformed_email(client: TestClient) -> None:
+    res = client.post("/api/v1/auth/login", json={"email": "not-an-email", "password": "secret"})
+    assert res.status_code == 422

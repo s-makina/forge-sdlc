@@ -1,6 +1,8 @@
 """Authentication schemas."""
 
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
+
+from app.schemas.email import EmailStr
 
 
 class LoginRequest(BaseModel):
