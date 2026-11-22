@@ -1,4 +1,27 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000/api/v1";
+function resolveApiBaseUrl(): string {
+  // Inlined at build time for the browser bundle.
+  const publicUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "/api/v1";
+
+  // In the browser, call the API through the same origin (the nginx reverse
+  // proxy serves /api/). Same-origin requests never trigger CORS and carry the
+  // session cookie naturally.
+  if (typeof window !== "undefined") {
+    return publicUrl;
+  }
+
+  // On the server (SSR / React Server Components), fetch runs inside the
+  // dashboard container where a relative URL cannot be resolved. Prefer an
+  // explicit internal URL that reaches the API over the Docker network.
+  if (process.env.API_INTERNAL_BASE_URL) {
+    return process.env.API_INTERNAL_BASE_URL;
+  }
+  if (/^https?:\/\//i.test(publicUrl)) {
+    return publicUrl;
+  }
+  return "http://api:8000/api/v1";
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 interface RequestOptions {
   method?: string;
