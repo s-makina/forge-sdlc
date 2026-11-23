@@ -259,6 +259,8 @@ export const getModelProviders = (includeInactive = false) =>
   );
 export const createModelProvider = (data: unknown) =>
   api<ModelProvider>("/models/providers", { method: "POST", body: data });
+export const updateModelProvider = (id: number, data: unknown) =>
+  api<ModelProvider>(`/models/providers/${id}`, { method: "PATCH", body: data });
 export const getModels = () => api<ListResponse<ModelInfo>>("/models/items");
 export const getProviderModels = (providerId: number) =>
   api<ListResponse<ModelInfo>>(`/models/providers/${providerId}/models`);

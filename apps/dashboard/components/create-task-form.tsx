@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createTask, type Project, type Repository } from "@/lib/api";
+import { createTask, type ModelProfile, type Project, type Repository } from "@/lib/api";
 
 const TASK_TYPES = [
   "feature",
@@ -17,8 +17,12 @@ const TASK_TYPES = [
 
 export function CreateTaskForm({
   projects,
+  roles,
+  modelProfiles,
 }: {
   projects: { project: Project; repositories: Repository[] }[];
+  roles: string[];
+  modelProfiles: ModelProfile[];
 }) {
   const router = useRouter();
   const [projectId, setProjectId] = useState<number | "">("");
@@ -145,17 +149,27 @@ export function CreateTaskForm({
       <div>
         <label>
           Assigned role
-          <input
-            value={assignedRole}
-            onChange={(e) => setAssignedRole(e.target.value)}
-            placeholder="software_engineer"
-          />
+          <select value={assignedRole} onChange={(e) => setAssignedRole(e.target.value)}>
+            <option value="">— unassigned —</option>
+            {roles.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
       <div>
         <label>
           Model profile
-          <input value={modelProfile} onChange={(e) => setModelProfile(e.target.value)} placeholder="coding-strong" />
+          <select value={modelProfile} onChange={(e) => setModelProfile(e.target.value)}>
+            <option value="">— none —</option>
+            {modelProfiles.map((m) => (
+              <option key={m.id} value={m.name}>
+                {m.name}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
       {error && <p className="error">{error}</p>}

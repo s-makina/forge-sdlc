@@ -2,18 +2,25 @@ import { api, type ListResponse, type Project, type Task } from "@/lib/api";
 import { StatusBadge } from "@/components/status-badge";
 import { CreateTaskForm } from "@/components/create-task-form";
 import { LaunchTaskButton } from "@/components/launch-task-button";
+import type { AgentSummary, ModelProfile } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
 export default async function TasksPage() {
   let tasks: Task[] = [];
   let projects: { project: Project; repositories: Project["repositories"] }[] = [];
+  let roles: string[] = [];
+  let modelProfiles: ModelProfile[] = [];
   let error = false;
   try {
     const res = await api<ListResponse<Task>>("/tasks");
     tasks = res.items;
     const proj = await api<ListResponse<Project>>("/projects");
     projects = proj.items.map((p) => ({ project: p, repositories: p.repositories }));
+    const agents = await api<ListResponse<AgentSummary>>("/agents");
+    roles = Array.from(new Set(agents.items.map((a) => a.role).filter(Boolean)));
+    const profiles = await api<ListResponse<ModelProfile>>("/models/profiles");
+    modelProfiles = profiles.items.filter((p) => p.is_active);
   } catch {
     error = true;
   }
@@ -31,7 +38,7 @@ export default async function TasksPage() {
         </div>
       ) : (
         <>
-          <CreateTaskForm projects={projects} />
+          <CreateTaskForm projects={projects} roles={roles} modelProfiles={modelProfiles} />
 
           {tasks.length === 0 ? (
             <div className="card">

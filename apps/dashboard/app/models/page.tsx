@@ -14,6 +14,7 @@ import { AssignProfileForm } from "@/components/assign-profile-form";
 import { CheckProviderButton } from "@/components/check-provider-button";
 import { CreateModelForm } from "@/components/create-model-form";
 import { CreateProviderForm } from "@/components/create-provider-form";
+import { EditProviderButton } from "@/components/edit-provider-button";
 import { ModelsList } from "@/components/models-list";
 
 export const dynamic = "force-dynamic";
@@ -110,6 +111,7 @@ export default async function ModelsPage() {
                   <td>{modelsByProvider(provider.id).length}</td>
                   <td>
                     <CheckProviderButton providerId={provider.id} />
+                    <EditProviderButton provider={provider} />
                   </td>
                 </tr>
               );
