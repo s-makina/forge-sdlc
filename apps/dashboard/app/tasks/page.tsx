@@ -2,6 +2,7 @@ import { api, type ListResponse, type Project, type Task } from "@/lib/api";
 import { StatusBadge } from "@/components/status-badge";
 import { CreateTaskForm } from "@/components/create-task-form";
 import { LaunchTaskButton } from "@/components/launch-task-button";
+import { SetReadyButton } from "@/components/set-ready-button";
 import type { AgentSummary, ModelProfile } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
@@ -88,7 +89,11 @@ export default async function TasksPage() {
                         )}
                       </td>
                       <td>
-                        <LaunchTaskButton taskId={t.id} disabled={t.status !== "ready"} />
+                        {t.status !== "ready" && t.status !== "in_progress" && t.status !== "completed" && t.status !== "cancelled" && t.status !== "failed" ? (
+                          <SetReadyButton taskId={t.id} />
+                        ) : (
+                          <LaunchTaskButton taskId={t.id} disabled={t.status !== "ready"} />
+                        )}
                       </td>
                     </tr>
                   ))}
