@@ -55,18 +55,32 @@ class TemporalWorkerRuntime:
         self._ready.set()
 
     def _run(self) -> None:
-        from temporalio.client import Client  # type: ignore[import-untyped]
+        import asyncio
 
         # Bind the real execution-manager client so pipeline activities can reach
         # the execution-manager over the internal network.
         execution_workflow.bind_execution_client(self._execution_manager)
         try:
-            client: Any = Client.connect(self._host, namespace=self._namespace)
-            worker = register_worker(client, task_queue=self._task_queue)
-            self._ready.set()
-            worker.run()  # blocks until the thread is asked to shut down
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(self._run_worker())
         finally:
             execution_workflow.bind_execution_client(None)
+            try:
+                asyncio.get_event_loop().close()
+            except (RuntimeError, ValueError):  # noqa: BLE001 - loop may be gone
+                pass
+
+    async def _run_worker(self) -> None:
+        from temporalio.client import Client  # type: ignore[import-untyped]
+
+        client: Any = await Client.connect(self._host, namespace=self._namespace)
+        worker = register_worker(client, task_queue=self._task_queue)
+        self._ready.set()
+        # Blocks the event loop until the worker is asked to shut down. As a
+        # daemon thread the worker dies with the orchestrator process on
+        # container shutdown.
+        await worker.run()
 
 
 def start_worker(settings: Settings, execution_manager: ExecutionManagerClient) -> TemporalWorkerRuntime:
