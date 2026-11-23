@@ -59,12 +59,15 @@ def launch_task(
     *,
     prompt: str,
     http_client: Any | None = None,
+    run_start_client: Any | None = None,
     settings: Settings | None = None,
 ) -> TaskLaunchRead:
-    """Create an execution for ``task`` and mark it launched.
+    """Create an execution for ``task`` and hand it to the orchestrator.
 
     ``http_client`` is an injectable POST helper (``post(url, json, headers)``)
-    so the worker call is testable without a live execution-manager.
+    for the execution-manager call, and ``run_start_client`` is the equivalent
+    for the orchestrator's ``start-run`` call; both default to ``httpx`` so they
+    are testable without live services.
     """
     settings = settings or get_settings()
 
@@ -116,6 +119,10 @@ def launch_task(
     data = response.json()
     execution_id = str(data["execution_id"])
 
+    # Hand the created execution to the orchestrator so it durably drives the
+    # remaining pipeline (provision -> prepare -> start-session -> run).
+    _start_execution_run(execution_id, task, prompt, run_start_client, settings)
+
     # Only move the task to in_progress once an execution was durably created.
     task.last_execution_id = execution_id
     task.last_execution_status = str(data.get("status", "created"))
@@ -126,6 +133,41 @@ def launch_task(
         execution_id=execution_id,
         status=task.status,
     )
+
+
+def _start_execution_run(
+    execution_id: str,
+    task: Task,
+    prompt: str,
+    run_start_client: Any | None,
+    settings: Settings,
+) -> None:
+    """Submit an execution-run workflow to the orchestrator for ``execution_id``."""
+    headers = {
+        "Content-Type": "application/json",
+        "X-ForgeSDLC-Token": settings.orchestrator_token or "forgesdlc-local",
+    }
+    body = {
+        "execution_id": execution_id,
+        "task_id": str(task.id),
+        "project_id": task.project_id,
+        "prompt": prompt,
+    }
+    url = f"{settings.orchestrator_url.rstrip('/')}/executions/{execution_id}/start-run"
+    try:
+        if run_start_client is not None:
+            response = run_start_client.post(url, json=body, headers=headers)
+        else:
+            response = _post(url, body, headers)
+    except Exception as exc:  # noqa: BLE001 - network boundary
+        raise ExecutionManagerUnavailable(
+            f"orchestrator unreachable while starting execution run: {exc}"
+        ) from None
+
+    status_code = getattr(response, "status_code", None)
+    if status_code is None or status_code not in (200, 201):
+        detail = getattr(response, "text", None) or getattr(response, "content", None)
+        raise LaunchError(f"orchestrator rejected execution start ({status_code}): {detail}")
 
 
 def _post(url: str, payload: dict[str, object], headers: dict[str, str]) -> Any:

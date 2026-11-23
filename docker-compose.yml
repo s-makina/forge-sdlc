@@ -50,6 +50,8 @@ services:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-local}
       EXECUTION_MANAGER_URL: ${EXECUTION_MANAGER_URL:-http://execution-manager:8001/api/v1}
       EXECUTION_MANAGER_TOKEN: ${EXECUTION_MANAGER_TOKEN:-}
+      ORCHESTRATOR_URL: ${ORCHESTRATOR_URL:-http://orchestrator:8002/api/v1}
+      ORCHESTRATOR_TOKEN: ${ORCHESTRATOR_TOKEN:-}
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
@@ -213,9 +215,11 @@ services:
     environment:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       CONTROL_PLANE_URL: ${CONTROL_PLANE_URL:-http://api:8000}
+      EXECUTION_MANAGER_URL: ${EXECUTION_MANAGER_URL:-http://execution-manager:8001/api/v1}
       TEMPORAL_HOST: ${TEMPORAL_HOST:-temporal:7233}
       TEMPORAL_NAMESPACE: ${TEMPORAL_NAMESPACE:-default}
       TEMPORAL_TASK_QUEUE: ${TEMPORAL_TASK_QUEUE:-forgesdlc-workflows}
+      START_WORKER: ${START_WORKER:-true}
     ports:
       - "${ORCHESTRATOR_PORT:-8002}:8002"
     depends_on:

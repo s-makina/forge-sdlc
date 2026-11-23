@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     # Shared secret protecting service-to-service task-launch calls.
     execution_manager_token: str = ""
 
+    # Orchestrator (Phase 4.1 worker) that durably drives the coding pipeline.
+    orchestrator_url: str = "http://orchestrator:8002/api/v1"
+    # Shared secret protecting service-to-service execution-run submissions.
+    orchestrator_token: str = ""
+
     # Workflow orchestration (Phase 4)
     workflow_timeout_seconds: int = 3600
     workflow_max_retries: int = 3

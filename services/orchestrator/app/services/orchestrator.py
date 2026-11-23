@@ -14,7 +14,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.execution.client import ExecutionManagerClient, ExecutionRequest
-from app.temporal.client import FEATURE_DEVELOPMENT_WORKFLOW_NAME, TemporalClient, WorkflowRun
+from app.temporal.client import (
+    EXECUTION_WORKFLOW_NAME,
+    FEATURE_DEVELOPMENT_WORKFLOW_NAME,
+    TemporalClient,
+    WorkflowRun,
+)
 
 
 @dataclass(frozen=True)
@@ -29,6 +34,20 @@ class WorkflowSubmission:
     @property
     def durable_id(self) -> str:
         return f"workflow-{self.workflow_id}"
+
+
+@dataclass(frozen=True)
+class ExecutionRunSubmission:
+    """A durable execution-run request for the coding pipeline."""
+
+    execution_id: str
+    task_id: str = ""
+    project_id: int = 0
+    prompt: str = ""
+
+    @property
+    def durable_id(self) -> str:
+        return f"execution-{self.execution_id}"
 
 
 class WorkflowNotStarted(RuntimeError):
@@ -69,6 +88,20 @@ class Orchestrator:
             timeout_seconds=self._timeout_seconds,
         )
 
+    def start_execution_run(self, submission: ExecutionRunSubmission) -> WorkflowRun:
+        """Submit a durable execution-run workflow for a task execution.
+
+        The execution is created by the control-plane API before this is called;
+        the workflow drives provision -> prepare -> start-session -> run.
+        """
+        return self._client.start_workflow(
+            name=EXECUTION_WORKFLOW_NAME,
+            workflow_id=submission.durable_id,
+            task_queue=self._task_queue,
+            args=[submission],
+            timeout_seconds=self._timeout_seconds,
+        )
+
     def cancel(self, workflow_id: int) -> None:
         """Request cancellation of a running workflow instance."""
         self._client.cancel_workflow(f"workflow-{workflow_id}")
@@ -91,3 +124,11 @@ class Orchestrator:
     def execution_status(self, execution_id: str) -> str:
         """Return the execution-manager status for ``execution_id`` ('' if unknown)."""
         return self._execution_manager.execution_status(execution_id)
+
+    def cancel_execution_run(self, execution_id: str) -> None:
+        """Request cancellation of a durable execution-run workflow."""
+        self._client.cancel_workflow(f"execution-{execution_id}")
+
+    def execution_run_status(self, execution_id: str) -> str:
+        """Return the durable status of an execution-run workflow ('' if unknown)."""
+        return self._client.workflow_status(f"execution-{execution_id}")

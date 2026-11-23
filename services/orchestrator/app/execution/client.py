@@ -41,12 +41,37 @@ class ExecutionHandle:
     status: str = "created"
 
 
+@dataclass(frozen=True)
+class RunOutcome:
+    """The result of driving an execution's coding ``run`` step."""
+
+    ok: bool
+    output: str = ""
+    error: str | None = None
+
+
 class ExecutionManagerClient(abc.ABC):
     """Minimal execution-manager surface used by the orchestrator."""
 
     @abc.abstractmethod
     def request_execution(self, request: ExecutionRequest) -> ExecutionHandle:
         """Request an execution and return its handle."""
+
+    @abc.abstractmethod
+    def provision_execution(self, execution_id: str) -> str:
+        """Provision the workspace container, returning the new status."""
+
+    @abc.abstractmethod
+    def prepare_execution(self, execution_id: str) -> str:
+        """Clone/checkout the repo, returning the new status."""
+
+    @abc.abstractmethod
+    def start_session(self, execution_id: str) -> str:
+        """Start the coding session, returning the new status."""
+
+    @abc.abstractmethod
+    def run_execution(self, execution_id: str, prompt: str) -> RunOutcome:
+        """Run the task prompt through the coding agent."""
 
     @abc.abstractmethod
     def execution_status(self, execution_id: str) -> str:
@@ -99,6 +124,42 @@ class HttpxExecutionManagerClient(ExecutionManagerClient):
             status=str(data.get("status", "created")),
         )
 
+    def provision_execution(self, execution_id: str) -> str:
+        return self._transition(execution_id, "provision")
+
+    def prepare_execution(self, execution_id: str) -> str:
+        return self._transition(execution_id, "prepare")
+
+    def start_session(self, execution_id: str) -> str:
+        return self._transition(execution_id, "start-session")
+
+    def run_execution(self, execution_id: str, prompt: str) -> RunOutcome:
+        http = self._resolve()
+        try:
+            response = http.post(
+                f"/executions/{execution_id}/run",
+                json={"prompt": prompt},
+            )
+        except Exception as exc:  # noqa: BLE001 - network boundary
+            return RunOutcome(ok=False, error=str(exc))
+        if response.status_code not in (200, 201):
+            return RunOutcome(
+                ok=False,
+                error=f"run returned {response.status_code}: {response.text}",
+            )
+        data = response.json()
+        return RunOutcome(
+            ok=bool(data.get("ok", False)),
+            output=str(data.get("output", "")),
+            error=data.get("error"),
+        )
+
+    def _transition(self, execution_id: str, action: str) -> str:
+        http = self._resolve()
+        response = http.post(f"/executions/{execution_id}/{action}")
+        response.raise_for_status()
+        return str(response.json().get("status", ""))
+
     def execution_status(self, execution_id: str) -> str:
         http = self._resolve()
         try:
@@ -129,6 +190,7 @@ class MemoryExecutionManagerClient(ExecutionManagerClient):
         self._cancelled: set[str] = set()
         self._healthy = True
         self._counter = 0
+        self._prompts: dict[str, list[str]] = {}
 
     def request_execution(self, request: ExecutionRequest) -> ExecutionHandle:
         self._counter += 1
@@ -136,6 +198,34 @@ class MemoryExecutionManagerClient(ExecutionManagerClient):
         handle = ExecutionHandle(execution_id=execution_id, status="created")
         self._executions[execution_id] = handle
         return handle
+
+    def _advance(self, execution_id: str, status: str) -> str:
+        self._executions[execution_id] = ExecutionHandle(
+            execution_id=execution_id, status=status
+        )
+        return status
+
+    def provision_execution(self, execution_id: str) -> str:
+        if execution_id not in self._executions:
+            raise KeyError(f"unknown execution {execution_id}")
+        return self._advance(execution_id, "ready")
+
+    def prepare_execution(self, execution_id: str) -> str:
+        if execution_id not in self._executions:
+            raise KeyError(f"unknown execution {execution_id}")
+        return self._advance(execution_id, "running")
+
+    def start_session(self, execution_id: str) -> str:
+        if execution_id not in self._executions:
+            raise KeyError(f"unknown execution {execution_id}")
+        return self._advance(execution_id, "running")
+
+    def run_execution(self, execution_id: str, prompt: str) -> RunOutcome:
+        if execution_id not in self._executions:
+            return RunOutcome(ok=False, error=f"unknown execution {execution_id}")
+        self._prompts.setdefault(execution_id, []).append(prompt)
+        self._advance(execution_id, "succeeded")
+        return RunOutcome(ok=True, output=f"ran: {prompt}")
 
     def execution_status(self, execution_id: str) -> str:
         handle = self._executions.get(execution_id)

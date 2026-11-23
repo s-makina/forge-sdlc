@@ -127,9 +127,17 @@ def register_worker(client: object, *, task_queue: str) -> object:
     """Create and register a Temporal worker for the orchestrator workflows."""
     from temporalio.worker import Worker
 
+    from app.temporal.execution_workflow import (
+        ExecutionRunWorkflow,
+        prepare,
+        provision,
+        run_task,
+        start_session,
+    )
+
     return Worker(
         client,
         task_queue=task_queue,
-        workflows=[FeatureDevelopmentWorkflow],
-        activities=[run_stage],
+        workflows=[FeatureDevelopmentWorkflow, ExecutionRunWorkflow],
+        activities=[run_stage, provision, prepare, start_session, run_task],
     )

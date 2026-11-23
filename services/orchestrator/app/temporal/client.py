@@ -20,6 +20,10 @@ from typing import Any
 # workflow in ``app.temporal.worker``.
 FEATURE_DEVELOPMENT_WORKFLOW_NAME = "forgesdlc_feature_development"
 
+# Durable execution-run workflow name (drives the coding pipeline; see
+# ``app.temporal.execution_workflow``).
+EXECUTION_WORKFLOW_NAME = "forgesdlc_execution_run"
+
 
 @dataclass(frozen=True)
 class WorkflowRun:

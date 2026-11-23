@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     workflow_timeout_seconds: int = 3600
     workflow_max_retries: int = 3
 
+    # Start the background Temporal worker alongside the FastAPI app. Disabled
+    # by default so tests and local runs don't require a live server.
+    start_worker: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -15,8 +15,9 @@ from app.services import tasks
 
 @pytest.fixture(autouse=True)
 def _reset_container() -> None:
-    """Drop any fake execution-manager client between tests."""
+    """Drop any fake execution-manager/orchestrator clients between tests."""
     get_container().unregister("execution_manager_client")
+    get_container().unregister("orchestrator_client")
 
 
 def _login(client: TestClient, db: Session) -> None:
@@ -85,13 +86,31 @@ class _FakeClient:
         return _FakeResponse(self.status_code, self.data)
 
 
+class _FakeOrchestrator:
+    """A fake ``run_start_client`` exposing ``post(url, json, headers)``."""
+
+    def __init__(self, *, status_code: int = 200, data: dict | None = None, exc: Exception | None = None) -> None:
+        self.status_code = status_code
+        self.data = data or {"execution_id": "exec-abc", "durable_status": "running"}
+        self.exc = exc
+        self.calls: list[dict] = []
+
+    def post(self, url: str, json: dict | None = None, headers: dict | None = None):
+        self.calls.append({"url": url, "json": json, "headers": headers})
+        if self.exc is not None:
+            raise self.exc
+        return _FakeResponse(self.status_code, self.data)
+
+
 def test_launch_ready_task_creates_execution(client: TestClient, db_session: Session) -> None:
     _login(client, db_session)
     project_id = _project_with_repo(db_session)
     task_id = _ready_task(db_session, project_id)
 
     fake = _FakeClient()
+    orchestrator = _FakeOrchestrator()
     get_container().register("execution_manager_client", fake)
+    get_container().register("orchestrator_client", orchestrator)
 
     res = client.post(f"/api/v1/tasks/{task_id}/execute")
 
@@ -109,6 +128,11 @@ def test_launch_ready_task_creates_execution(client: TestClient, db_session: Ses
     sent = fake.calls[0]
     assert sent["json"]["repository_url"] == "https://github.com/example/app.git"
     assert sent["headers"]["X-ForgeSDLC-Token"]
+    # The execution run is handed to the orchestrator with the task prompt.
+    started = orchestrator.calls[0]
+    assert started["url"].endswith("/executions/exec-abc/start-run")
+    assert started["json"]["execution_id"] == "exec-abc"
+    assert started["json"]["prompt"]
 
 
 def test_launch_rejects_unregistered_repository(

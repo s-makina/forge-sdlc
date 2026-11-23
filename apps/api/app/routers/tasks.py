@@ -146,7 +146,13 @@ def launch_task(
     except KeyError:
         http_client = None
     try:
-        result = task_launch.launch_task(db, task, prompt=prompt, http_client=http_client)
+        run_start_client = get_container().resolve("orchestrator_client")
+    except KeyError:
+        run_start_client = None
+    try:
+        result = task_launch.launch_task(
+            db, task, prompt=prompt, http_client=http_client, run_start_client=run_start_client
+        )
     except task_launch.NotLaunchable as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from None
     except task_launch.ExecutionManagerUnavailable as exc:
