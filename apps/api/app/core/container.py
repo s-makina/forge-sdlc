@@ -26,6 +26,10 @@ class Container:
     def register(self, name: str, instance: Any) -> None:
         self._singletons[name] = instance
 
+    def unregister(self, name: str) -> None:
+        """Drop a service so a later ``resolve`` raises ``KeyError`` again."""
+        self._singletons.pop(name, None)
+
     def resolve(self, name: str) -> Any:
         if name not in self._singletons:
             raise KeyError(f"No service registered under '{name}'")

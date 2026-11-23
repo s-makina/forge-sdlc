@@ -15,6 +15,12 @@ from sqlalchemy.orm import configure_mappers
 
 from app.db.session import Base
 
+# Columns added to the ORM by migrations after 0003 (0004 plan_approvals is a
+# separate table; 0005 adds provider credentials + task execution link columns).
+_LATER_MIGRATION_COLUMNS = {
+    "tasks": {"last_execution_id", "last_execution_status"},
+}
+
 _PATH = str(Path(__file__).resolve().parents[1] / "alembic" / "versions" / "0003_workflows_tasks.py")
 spec = importlib.util.spec_from_file_location("migration_0003", _PATH)
 migration = importlib.util.module_from_spec(spec)
@@ -77,13 +83,16 @@ def test_0003_tables_and_columns_match_orm() -> None:
     for table_name, columns in recorded.tables.items():
         assert table_name in orm, f"migration creates unknown table {table_name}"
         missing = columns - orm[table_name]
-        extra = orm[table_name] - columns
+        # Columns owned by later migrations (0004/0005) are not part of 0003.
+        extra = orm[table_name] - columns - _LATER_MIGRATION_COLUMNS.get(table_name, set())
         assert not missing, f"{table_name}: migration missing columns {sorted(missing)}"
         assert not extra, f"{table_name}: migration has unexpected columns {sorted(extra)}"
 
     for table_name, columns in orm.items():
         if table_name in recorded.tables:
-            assert columns == recorded.tables[table_name]
+            assert columns - recorded.tables[table_name] <= _LATER_MIGRATION_COLUMNS.get(
+                table_name, set()
+            )
 
 
 def test_0003_creates_workflow_and_task_tables() -> None:

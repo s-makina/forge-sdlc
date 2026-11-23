@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.models.execution import Execution, ExecutionStatus
+from app.models.execution import Execution
 from app.openhands.client import AgentPermissions, CodingRuntime, ToolResult
 from app.services import workspace
 
@@ -77,6 +77,15 @@ def run_tests(
 ) -> ToolResult:
     """Run the project's test command (delegated to Phase 3.5 adapter)."""
     return runtime.run_tests(session_id, command)
+
+
+def run_task(
+    runtime: CodingRuntime,
+    session_id: str,
+    prompt: str,
+) -> ToolResult:
+    """Run a task prompt through the coding agent."""
+    return runtime.run_task(session_id, prompt)
 
 
 def close_session(

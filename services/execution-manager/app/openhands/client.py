@@ -64,6 +64,10 @@ class CodingRuntime(abc.ABC):
         """Run the project's test command and capture results."""
 
     @abc.abstractmethod
+    def run_task(self, session_id: str, prompt: str) -> ToolResult:
+        """Send task instructions and run the coding agent until it stops."""
+
+    @abc.abstractmethod
     def close_session(self, session_id: str) -> None:
         """Tear down an OpenHands session."""
 
@@ -71,8 +75,15 @@ class CodingRuntime(abc.ABC):
 class OpenHandsSdkRuntime(CodingRuntime):
     """Production runtime backed by the OpenHands SDK (lazily resolved)."""
 
-    def __init__(self, base_url: str | None = None) -> None:
+    def __init__(
+        self,
+        base_url: str | None = None,
+        api_key: str | None = None,
+        model: str | None = None,
+    ) -> None:
         self._base_url = base_url or ""
+        self._api_key = api_key or ""
+        self._model = model or "default"
         self._permissions: dict[str, AgentPermissions] = {}
         self._sessions: dict[str, object] = {}
 
@@ -82,15 +93,27 @@ class OpenHandsSdkRuntime(CodingRuntime):
         permissions: AgentPermissions,
         model_profile: str | None = None,
     ) -> str:
-        sdk = self._resolve_sdk()
-        session = sdk.Session(
-            workspace_dir=workspace_dir,
-            model=model_profile or "default",
+        from openhands.sdk import LLM, Agent, Conversation, Tool  # type: ignore[import-untyped]
+        from openhands.tools.file_editor import FileEditorTool  # type: ignore[import-untyped]
+        from openhands.tools.terminal import TerminalTool  # type: ignore[import-untyped]
+
+        model = model_profile or self._model
+        llm = LLM(
+            model=model,
+            api_key=self._api_key or None,
             base_url=self._base_url or None,
         )
-        session_id = str(session.sid)
+        agent = Agent(
+            llm=llm,
+            tools=[
+                Tool(name=TerminalTool.name),
+                Tool(name=FileEditorTool.name),
+            ],
+        )
+        conversation = Conversation(agent=agent, workspace=workspace_dir)
+        session_id = f"conversation-{len(self._sessions) + 1}"
         self._permissions[session_id] = permissions
-        self._sessions[session_id] = session
+        self._sessions[session_id] = conversation
         return session_id
 
     def _resolve_sdk(self) -> object:
@@ -132,9 +155,24 @@ class OpenHandsSdkRuntime(CodingRuntime):
         except Exception as exc:  # noqa: BLE001
             return ToolResult(ok=False, output="", exit_code=1, error=str(exc))
 
+    def run_task(self, session_id: str, prompt: str) -> ToolResult:
+        self._check(session_id, self._permissions[session_id].write_repository, "write_repository")
+        try:
+            session = self._sessions[session_id]
+            session.send_message(prompt)  # type: ignore[attr-defined]
+            result = session.run()  # type: ignore[attr-defined]
+            return _coerce(result)
+        except Exception as exc:  # noqa: BLE001
+            return ToolResult(ok=False, output="", exit_code=1, error=str(exc))
+
     def close_session(self, session_id: str) -> None:
-        self._sessions.pop(session_id, None)
+        session = self._sessions.pop(session_id, None)
         self._permissions.pop(session_id, None)
+        if session is not None:
+            try:
+                session.close()  # type: ignore[attr-defined]
+            except Exception:  # noqa: BLE001 - closing a session is best-effort
+                pass
 
 
 def _coerce(result: object) -> ToolResult:

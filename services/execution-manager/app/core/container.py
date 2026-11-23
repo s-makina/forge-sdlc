@@ -26,7 +26,10 @@ class Container:
         self._singletons: dict[str, object] = {
             "settings": settings,
             "docker_client": DockerSdkClient(),
-            "coding_runtime": OpenHandsSdkRuntime(base_url=settings.openhands_base_url),
+            "coding_runtime": OpenHandsSdkRuntime(
+                base_url=settings.litellm_base_url,
+                api_key=settings.litellm_api_key,
+            ),
             "object_store": _build_object_store(settings),
         }
 

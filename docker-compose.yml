@@ -48,6 +48,8 @@ services:
       LITELLM_CONFIG_PATH: ${LITELLM_CONFIG_PATH:-/app/gateway/config.generated.yaml}
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-litellm-local}
+      EXECUTION_MANAGER_URL: ${EXECUTION_MANAGER_URL:-http://execution-manager:8001/api/v1}
+      EXECUTION_MANAGER_TOKEN: ${EXECUTION_MANAGER_TOKEN:-}
     ports:
       - "${API_PORT:-8000}:8000"
     volumes:
@@ -185,6 +187,8 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://forgesdlc:forgesdlc@postgres:5432/forgesdlc}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      LITELLM_BASE_URL: ${LITELLM_BASE_URL:-http://litellm:4000}
+      LITELLM_API_KEY: ${LITELLM_API_KEY:-}
     ports:
       - "${EXECUTION_MANAGER_PORT:-8001}:8001"
     depends_on:

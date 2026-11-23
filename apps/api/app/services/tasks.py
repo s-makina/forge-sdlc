@@ -8,7 +8,7 @@ duplicates; scheduling (4.4) reads these edges.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -109,7 +109,7 @@ def transition_status(db: Session, task: Task, status: str, *, note: str | None 
     """
     if task.status in (TaskStatus.COMPLETED.value, TaskStatus.CANCELLED.value):
         raise InvalidStatusTransition(f"task is already terminal ({task.status})")
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if status == TaskStatus.IN_PROGRESS.value and task.started_at is None:
         task.started_at = now
     if status in (TaskStatus.COMPLETED.value, TaskStatus.FAILED.value, TaskStatus.CANCELLED.value):
@@ -158,3 +158,32 @@ def dependencies_satisfied(db: Session, task: Task) -> bool:
         if dep is None or dep.status != TaskStatus.COMPLETED.value:
             return False
     return True
+
+
+class TaskNotLaunchable(ValueError):
+    """Raised when a task cannot be launched (status, repo, or dependency)."""
+
+
+def is_launchable(db: Session, task: Task) -> bool:
+    """Return True when the task may be explicitly launched by a user."""
+    if task.status != TaskStatus.READY.value:
+        return False
+    if not task.repository_url:
+        return False
+    return dependencies_satisfied(db, task)
+
+
+def mark_launched(db: Session, task: Task, *, result_summary: str | None = None) -> Task:
+    """Transition a ready task to ``in_progress`` once an execution is created."""
+    if task.status != TaskStatus.READY.value:
+        raise TaskNotLaunchable(f"task is not ready (status={task.status})")
+    now = datetime.now(UTC)
+    if task.started_at is None:
+        task.started_at = now
+    task.status = TaskStatus.IN_PROGRESS.value
+    if result_summary:
+        task.result_summary = result_summary
+    db.commit()
+    refreshed = _with_graph(db, task.id)
+    assert refreshed is not None
+    return refreshed

@@ -10,12 +10,12 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.session import get_db
-from app.deps.container import get_coding_runtime, get_docker_client, get_object_store
+from app.deps.container import get_coding_runtime, get_docker_client
 from app.docker.client import DockerClient
 from app.models.execution import Execution, ExecutionStatus
 from app.openhands.client import CodingRuntime
-from app.storage.client import ObjectStore
 from app.schemas.execution import (
+    ExecutionArtefact,
     ExecutionArtefactsRead,
     ExecutionCancelRead,
     ExecutionCleanupRead,
@@ -25,8 +25,10 @@ from app.schemas.execution import (
     ExecutionLogsRead,
     ExecutionRead,
     ExecutionStatusRead,
+    RunTaskRequest,
+    RunTaskResponse,
 )
-from app.services import events, executions, executor, repository, runtime, terminal
+from app.services import events, executions, executor, repository, runtime, terminal, workspace
 
 router = APIRouter(prefix="/executions", tags=["executions"])
 
@@ -75,6 +77,40 @@ def start_session(
     execution = _get_execution_or_404(db, execution_id)
     _, execution = runtime.start_coding_session(db, coding_runtime, execution)
     return ExecutionRead.model_validate(execution)
+
+
+@router.post("/{execution_id}/run", response_model=RunTaskResponse)
+def run_task(
+    execution_id: str,
+    payload: RunTaskRequest,
+    db: Session = Depends(get_db),
+    coding_runtime: CodingRuntime = Depends(get_coding_runtime),
+) -> RunTaskResponse:
+    execution = _get_execution_or_404(db, execution_id)
+    if not execution.session_id:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="No coding session has been started for this execution",
+        )
+    result = runtime.run_task(coding_runtime, execution.session_id, payload.prompt)
+    events.record_event(
+        db,
+        execution_id,
+        kind="run_task",
+        message=payload.prompt,
+        level="debug",
+        details="error" if not result.ok else "ok",
+    )
+    if not result.ok:
+        workspace.fail_execution(
+            db, execution, result.error or "agent task failed"
+        )
+    return RunTaskResponse(
+        execution_id=execution_id,
+        ok=result.ok,
+        output=result.output,
+        error=result.error,
+    )
 
 
 @router.post("/{execution_id}/test", response_model=ExecutionRead)

@@ -18,6 +18,17 @@ class ExecutionCreate(BaseModel):
     network_policy: str | None = Field(default=None, max_length=32)
 
 
+class RunTaskRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=4000)
+
+
+class RunTaskResponse(BaseModel):
+    execution_id: str
+    ok: bool
+    output: str
+    error: str | None = None
+
+
 class ExecutionRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -49,6 +60,8 @@ class ExecutionList(BaseModel):
 
 
 class ExecutionStatusRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     execution_id: str
     status: str
     container_id: str | None

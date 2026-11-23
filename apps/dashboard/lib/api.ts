@@ -399,12 +399,20 @@ export interface Task {
   network_policy: string | null;
   result_summary: string | null;
   artefact_refs: string[];
+  last_execution_id: string | null;
+  last_execution_status: string | null;
   dependencies: number[];
   depends_on: number[];
   started_at: string | null;
   finished_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface TaskLaunchResult {
+  task_id: number;
+  execution_id: string;
+  status: string;
 }
 
 export const getTasks = (projectId?: number, statusFilter?: string) => {
@@ -423,3 +431,5 @@ export const transitionTaskStatus = (id: number, status: string, note?: string) 
   api<Task>(`/tasks/${id}/status`, { method: "POST", body: { status, ...(note ? { note } : {}) } });
 export const setTaskDependencies = (id: number, dependsOn: number[]) =>
   api<Task>(`/tasks/${id}/dependencies`, { method: "POST", body: { depends_on: dependsOn } });
+export const launchTask = (id: number) =>
+  api<TaskLaunchResult>(`/tasks/${id}/execute`, { method: "POST" });

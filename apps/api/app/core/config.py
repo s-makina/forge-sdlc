@@ -52,6 +52,11 @@ class Settings(BaseSettings):
     # OpenHands (Phase 3 placeholder)
     openhands_base_url: str = ""
 
+    # Execution manager (Phase 3 worker) reached over the internal network.
+    execution_manager_url: str = "http://execution-manager:8001/api/v1"
+    # Shared secret protecting service-to-service task-launch calls.
+    execution_manager_token: str = ""
+
     # Workflow orchestration (Phase 4)
     workflow_timeout_seconds: int = 3600
     workflow_max_retries: int = 3

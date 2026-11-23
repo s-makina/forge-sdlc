@@ -23,6 +23,17 @@ def upgrade() -> None:
         sa.Column("credential_ciphertext", sa.Text(), nullable=True),
     )
 
+    op.add_column(
+        "tasks",
+        sa.Column("last_execution_id", sa.String(length=64), nullable=True),
+    )
+    op.add_column(
+        "tasks",
+        sa.Column("last_execution_status", sa.String(length=32), nullable=True),
+    )
+
 
 def downgrade() -> None:
     op.drop_column("model_providers", "credential_ciphertext")
+    op.drop_column("tasks", "last_execution_status")
+    op.drop_column("tasks", "last_execution_id")

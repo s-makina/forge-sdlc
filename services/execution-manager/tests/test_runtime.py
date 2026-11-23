@@ -46,6 +46,10 @@ class FakeRuntime(CodingRuntime):
         self.calls.append("tests")
         return ToolResult(ok=True, output="passed")
 
+    def run_task(self, session_id: str, prompt: str) -> ToolResult:
+        self.calls.append(f"task:{prompt}")
+        return ToolResult(ok=True, output="task completed")
+
     def close_session(self, session_id: str) -> None:
         self.calls.append("close")
         self.sessions.discard(session_id)
@@ -126,6 +130,18 @@ def test_run_command_and_tests(db_session: Session) -> None:
     assert "tests" in fake.calls
 
 
+def test_run_task_sends_prompt_to_coding_runtime(db_session: Session) -> None:
+    execution = _execution(db_session)
+    fake = FakeRuntime()
+    session_id, _ = runtime.start_coding_session(db_session, fake, execution)
+
+    result = runtime.run_task(fake, session_id, "Update the README with setup steps")
+
+    assert result.ok is True
+    assert result.output == "task completed"
+    assert "task:Update the README with setup steps" in fake.calls
+
+
 def test_close_session_tears_down(db_session: Session) -> None:
     execution = _execution(db_session)
     fake = FakeRuntime()
@@ -150,3 +166,50 @@ def test_start_session_endpoint(client: TestClient, db_session: Session) -> None
     assert res.status_code == 200
     assert res.json()["status"] == ExecutionStatus.RUNNING.value
     assert res.json()["session_id"] == "session-1"
+
+
+def test_run_task_endpoint_uses_coding_runtime(client: TestClient, db_session: Session) -> None:
+    created = client.post(
+        "/api/v1/executions",
+        json={"project_id": 1, "repository_url": "https://github.com/example/app.git"},
+    ).json()
+    execution_id = created["execution_id"]
+
+    fake = FakeRuntime()
+    get_container().register("coding_runtime", fake)
+    client.post(f"/api/v1/executions/{execution_id}/start-session")
+
+    res = client.post(
+        f"/api/v1/executions/{execution_id}/run",
+        json={"prompt": "Update the README with setup steps"},
+    )
+    assert res.status_code == 200
+    assert res.json()["ok"] is True
+    assert res.json()["output"] == "task completed"
+    assert "task:Update the README with setup steps" in fake.calls
+
+
+def test_run_task_endpoint_failure_moves_to_failed(client: TestClient, db_session: Session) -> None:
+    created = client.post(
+        "/api/v1/executions",
+        json={"project_id": 1, "repository_url": "https://github.com/example/app.git"},
+    ).json()
+    execution_id = created["execution_id"]
+
+    class BrokenRuntime(FakeRuntime):
+        def run_task(self, session_id: str, prompt: str) -> ToolResult:
+            return ToolResult(ok=False, output="", exit_code=1, error="agent failed")
+
+    get_container().register("coding_runtime", BrokenRuntime())
+    client.post(f"/api/v1/executions/{execution_id}/start-session")
+
+    res = client.post(
+        f"/api/v1/executions/{execution_id}/run",
+        json={"prompt": "Update the README"},
+    )
+    assert res.status_code == 200
+    body = res.json()
+    assert body["ok"] is False
+    assert "agent failed" in body["error"]
+    status = client.get(f"/api/v1/executions/{execution_id}/status").json()
+    assert status["status"] == ExecutionStatus.FAILED.value

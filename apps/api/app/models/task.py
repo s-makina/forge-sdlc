@@ -13,11 +13,11 @@ from datetime import datetime
 from enum import StrEnum
 
 from sqlalchemy import (
+    JSON,
     DateTime,
     Float,
     ForeignKey,
     Integer,
-    JSON,
     String,
     Text,
     UniqueConstraint,
@@ -108,15 +108,19 @@ class Task(Base, TimestampMixin):
     result_summary: Mapped[str | None] = mapped_column(Text)
     artefact_refs: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
 
+    # Most recent execution attempt (Phase 3/4 link to the execution manager).
+    last_execution_id: Mapped[str | None] = mapped_column(String(64), index=True)
+    last_execution_status: Mapped[str | None] = mapped_column(String(32))
+
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    dependencies_out: Mapped[list["TaskDependency"]] = relationship(
+    dependencies_out: Mapped[list[TaskDependency]] = relationship(
         foreign_keys="TaskDependency.task_id",
         back_populates="task",
         cascade="all, delete-orphan",
     )
-    dependencies_in: Mapped[list["TaskDependency"]] = relationship(
+    dependencies_in: Mapped[list[TaskDependency]] = relationship(
         foreign_keys="TaskDependency.depends_on_id",
         back_populates="depends_on",
         cascade="all, delete-orphan",

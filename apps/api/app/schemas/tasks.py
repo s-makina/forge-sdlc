@@ -98,6 +98,8 @@ class TaskRead(BaseModel):
     network_policy: str | None
     result_summary: str | None
     artefact_refs: list[str]
+    last_execution_id: str | None = None
+    last_execution_status: str | None = None
     dependencies: list[int] = []
     depends_on: list[int] = []
     started_at: datetime | None
@@ -114,6 +116,12 @@ class TaskList(BaseModel):
 class TaskStatusTransition(BaseModel):
     status: TaskStatusValue
     note: str | None = None
+
+
+class TaskLaunchRead(BaseModel):
+    task_id: int
+    execution_id: str
+    status: str
 
 
 class SetDependencies(BaseModel):

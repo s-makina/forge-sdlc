@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     # OpenHands runtime (Phase 3.4 placeholder)
     openhands_base_url: str = ""
 
+    # Model gateway (LiteLLM) reachable from the worker so the coding agent can
+    # invoke the configured provider models.
+    litellm_base_url: str = "http://litellm:4000"
+    litellm_api_key: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:
