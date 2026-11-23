@@ -15,11 +15,16 @@ dependencies = [
   "pydantic[email]>=2.7",
   "pydantic-settings>=2.3",
   "redis>=5.0",
-  "openhands-sdk>=1.0.0",
-  "openhands-tools>=1.0.0",
 ]
 
 [project.optional-dependencies]
+# OpenHands coding agent. Heavy (pulls litellm, boto3, anthropic, ...), so it is
+# an opt-in extra rather than a base dependency. Install with:
+#   pip install "forgesdlc-execution-manager[runtime]"
+runtime = [
+  "openhands-sdk==1.63.1",
+  "openhands-tools==1.63.1",
+]
 dev = [
   "ruff>=0.5",
   "mypy>=1.10",

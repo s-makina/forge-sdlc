@@ -1203,8 +1203,6 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
-    { name = "openhands-sdk" },
-    { name = "openhands-tools" },
     { name = "psycopg", extra = ["binary"] },
     { name = "pydantic", extra = ["email"] },
     { name = "pydantic-settings" },
@@ -1221,14 +1219,18 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "ruff" },
 ]
+runtime = [
+    { name = "openhands-sdk" },
+    { name = "openhands-tools" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.10" },
-    { name = "openhands-sdk", specifier = ">=1.0.0" },
-    { name = "openhands-tools", specifier = ">=1.0.0" },
+    { name = "openhands-sdk", marker = "extra == 'runtime'", specifier = "==1.63.1" },
+    { name = "openhands-tools", marker = "extra == 'runtime'", specifier = "==1.63.1" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.7" },
     { name = "pydantic-settings", specifier = ">=2.3" },
@@ -1239,7 +1241,7 @@ requires-dist = [
     { name = "sqlalchemy", specifier = ">=2.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.30" },
 ]
-provides-extras = ["dev"]
+provides-extras = ["runtime", "dev"]
 
 [[package]]
 name = "frozenlist"
