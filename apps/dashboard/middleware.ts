@@ -24,5 +24,10 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
+  // Run middleware in the Node.js runtime rather than the Edge runtime. The
+  // Edge runtime forbids string code-generation ("eval"), which Next.js 15.5
+  // trips over here; this middleware only reads cookies and redirects, so it
+  // runs fine on Node.
+  runtime: "nodejs",
   matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
 };
