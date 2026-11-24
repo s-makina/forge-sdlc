@@ -36,3 +36,10 @@ class ExecutionRunStatus(BaseModel):
 
     execution_id: str = Field(min_length=1, max_length=64)
     durable_status: str
+
+
+class ExecutionList(BaseModel):
+    """A list of executions with a total count."""
+
+    items: list[ExecutionSummary]
+    total: int

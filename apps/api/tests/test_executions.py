@@ -121,8 +121,8 @@ def test_list_executions_derived_from_tasks(
 
     assert res.status_code == 200
     body = res.json()
-    assert len(body) == 1
-    item = body[0]
+    assert len(body["items"]) == 1
+    item = body["items"][0]
     assert item["execution_id"] == "exec-snake-1"
     assert item["task_title"] == "Snake Game Build"
     assert item["status"] == "running"

@@ -31,6 +31,7 @@ from app.db.session import get_db
 from app.deps.auth import require_user
 from app.models.user import User
 from app.schemas.executions import (
+    ExecutionList,
     ExecutionStatus,
     ExecutionRunStatus,
     ExecutionSummary,
@@ -82,10 +83,10 @@ def _get_json(url: str, headers: dict[str, str], client_name: str) -> Any | None
         return None
 
 
-@router.get("", response_model=list[ExecutionSummary])
+@router.get("", response_model=ExecutionList)
 def list_executions(
     db: Session = Depends(get_db), _: User = Depends(require_user)
-) -> list[ExecutionSummary]:
+) -> ExecutionList:
     """List executions derived from tasks that have been launched.
 
     Each item reflects the last known pipeline status recorded on the task
@@ -104,7 +105,7 @@ def list_executions(
                     status=task.last_execution_status or "created",
                 )
             )
-    return executions
+    return ExecutionList(items=executions, total=len(executions))
 
 
 @router.get("/{execution_id}/status", response_model=ExecutionStatus)
