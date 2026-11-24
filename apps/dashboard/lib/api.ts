@@ -455,10 +455,44 @@ export interface ExecutionRunStatus {
   durable_status: string;
 }
 
+export interface ExecutionLogEntry {
+  sequence: number;
+  timestamp: string;
+  kind: string;
+  level: string;
+  message: string;
+}
+
+export interface ExecutionLogsRead {
+  execution_id: string;
+  entries: ExecutionLogEntry[];
+}
+
+export interface ExecutionArtefact {
+  name: string;
+  location: string;
+  size_bytes: number;
+  mime_type: string | null;
+  kind: string | null;
+}
+
+export interface ExecutionArtefactsRead {
+  execution_id: string;
+  artefacts: ExecutionArtefact[];
+}
+
 export const getExecutions = () => api<ListResponse<ExecutionSummary>>("/executions");
 export const getExecutionStatus = (execution_id: string) =>
   api<ExecutionStatus>(`/executions/${encodeURIComponent(execution_id)}/status`);
 export const getExecutionRunStatus = (execution_id: string) =>
   api<ExecutionRunStatus>(
     `/executions/${encodeURIComponent(execution_id)}/run-status`
+  );
+export const getExecutionLogs = (execution_id: string) =>
+  api<ExecutionLogsRead>(
+    `/executions/${encodeURIComponent(execution_id)}/logs`
+  );
+export const getExecutionArtefacts = (execution_id: string) =>
+  api<ExecutionArtefactsRead>(
+    `/executions/${encodeURIComponent(execution_id)}/artefacts`
   );

@@ -10,6 +10,7 @@ Describes an execution's two observable statuses:
 
 from __future__ import annotations
 
+from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -43,3 +44,37 @@ class ExecutionList(BaseModel):
 
     items: list[ExecutionSummary]
     total: int
+
+
+class ExecutionLogEntry(BaseModel):
+    """A single captured execution event (command, tool call, diff, …)."""
+
+    sequence: int
+    timestamp: datetime
+    kind: str
+    level: str
+    message: str
+
+
+class ExecutionLogsRead(BaseModel):
+    """Structured event log for a single execution."""
+
+    execution_id: str = Field(min_length=1, max_length=64)
+    entries: list[ExecutionLogEntry]
+
+
+class ExecutionArtefact(BaseModel):
+    """Metadata for a stored artefact (test report, patch, diff)."""
+
+    name: str
+    location: str
+    size_bytes: int
+    mime_type: str | None = None
+    kind: str | None = None
+
+
+class ExecutionArtefactsRead(BaseModel):
+    """All artefacts produced by an execution."""
+
+    execution_id: str = Field(min_length=1, max_length=64)
+    artefacts: list[ExecutionArtefact]

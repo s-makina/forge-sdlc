@@ -187,3 +187,112 @@ def test_execution_run_status_degrades_to_unknown(
 
     assert res.status_code == 200
     assert res.json() == {"execution_id": "exec-snake-1", "durable_status": "unknown"}
+
+
+def test_execution_logs_proxies_to_execution_manager(
+    client: TestClient, db_session: Session
+) -> None:
+    _login(client, db_session)
+    fake = _FakeStatusClient(
+        status_code=200,
+        data={
+            "execution_id": "exec-snake-1",
+            "entries": [
+                {
+                    "sequence": 1,
+                    "timestamp": "2026-11-24T06:00:00+00:00",
+                    "kind": "command",
+                    "level": "info",
+                    "message": "git checkout -b snake-game",
+                },
+                {
+                    "sequence": 2,
+                    "timestamp": "2026-11-24T06:01:00+00:00",
+                    "kind": "tool_call",
+                    "level": "info",
+                    "message": "edit_file(src/snake.py)",
+                },
+            ],
+        },
+    )
+    get_container().register("execution_manager_client", fake)
+
+    res = client.get("/api/v1/executions/exec-snake-1/logs")
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["execution_id"] == "exec-snake-1"
+    assert len(body["entries"]) == 2
+    assert body["entries"][0]["kind"] == "command"
+    assert body["entries"][0]["message"] == "git checkout -b snake-game"
+    assert body["entries"][1]["kind"] == "tool_call"
+    assert fake.calls[0]["url"].endswith("/executions/exec-snake-1/logs")
+
+
+def test_execution_logs_degrades_to_empty(
+    client: TestClient, db_session: Session
+) -> None:
+    _login(client, db_session)
+    get_container().register(
+        "execution_manager_client", _FakeStatusClient(exc=ConnectionError("down"))
+    )
+
+    res = client.get("/api/v1/executions/exec-snake-1/logs")
+
+    assert res.status_code == 200
+    assert res.json() == {"execution_id": "exec-snake-1", "entries": []}
+
+
+def test_execution_artefacts_proxies_to_execution_manager(
+    client: TestClient, db_session: Session
+) -> None:
+    _login(client, db_session)
+    fake = _FakeStatusClient(
+        status_code=200,
+        data={
+            "execution_id": "exec-snake-1",
+            "artefacts": [
+                {
+                    "name": "snake.patch",
+                    "location": "artifacts/executions/exec-snake-1/snake.patch",
+                    "size_bytes": 1234,
+                    "mime_type": "text/x-patch",
+                    "kind": "diff",
+                },
+                {
+                    "name": "report.xml",
+                    "location": "artifacts/executions/exec-snake-1/report.xml",
+                    "size_bytes": 567,
+                    "mime_type": "application/xml",
+                    "kind": "test_report",
+                },
+            ],
+        },
+    )
+    get_container().register("execution_manager_client", fake)
+
+    res = client.get("/api/v1/executions/exec-snake-1/artefacts")
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["execution_id"] == "exec-snake-1"
+    assert len(body["artefacts"]) == 2
+    assert body["artefacts"][0]["name"] == "snake.patch"
+    assert body["artefacts"][0]["size_bytes"] == 1234
+    assert body["artefacts"][0]["kind"] == "diff"
+    assert body["artefacts"][1]["kind"] == "test_report"
+    assert fake.calls[0]["url"].endswith("/executions/exec-snake-1/artefacts")
+
+
+def test_execution_artefacts_degrades_to_empty(
+    client: TestClient, db_session: Session
+) -> None:
+    _login(client, db_session)
+    get_container().register(
+        "execution_manager_client", _FakeStatusClient(exc=ConnectionError("down"))
+    )
+
+    res = client.get("/api/v1/executions/exec-snake-1/artefacts")
+
+    assert res.status_code == 200
+    assert res.json() == {"execution_id": "exec-snake-1", "artefacts": []}

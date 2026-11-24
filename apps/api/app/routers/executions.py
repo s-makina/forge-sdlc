@@ -31,7 +31,11 @@ from app.db.session import get_db
 from app.deps.auth import require_user
 from app.models.user import User
 from app.schemas.executions import (
+    ExecutionArtefact,
+    ExecutionArtefactsRead,
     ExecutionList,
+    ExecutionLogEntry,
+    ExecutionLogsRead,
     ExecutionStatus,
     ExecutionRunStatus,
     ExecutionSummary,
@@ -141,3 +145,63 @@ def execution_run_status(
     return ExecutionRunStatus(
         execution_id=execution_id, durable_status=durable_status
     )
+
+
+@router.get("/{execution_id}/logs", response_model=ExecutionLogsRead)
+def execution_logs(
+    execution_id: str, _: User = Depends(require_user)
+) -> ExecutionLogsRead:
+    """Live execution-manager event log for ``execution_id``."""
+
+    entries: list[ExecutionLogEntry] = []
+    settings = get_settings()
+    url = f"{settings.execution_manager_url.rstrip('/')}/executions/{execution_id}/logs"
+    data = _get_json(url, _headers("execution_manager_token"), "execution_manager_client")
+    if isinstance(data, dict):
+        raw_entries = data.get("entries") or []
+        for entry in raw_entries:
+            if isinstance(entry, dict):
+                entries.append(
+                    ExecutionLogEntry(
+                        sequence=int(entry.get("sequence", 0)),
+                        timestamp=str(entry.get("timestamp", "")),
+                        kind=str(entry.get("kind", "")),
+                        level=str(entry.get("level", "info")),
+                        message=str(entry.get("message", "")),
+                    )
+                )
+    return ExecutionLogsRead(execution_id=execution_id, entries=entries)
+
+
+@router.get("/{execution_id}/artefacts", response_model=ExecutionArtefactsRead)
+def execution_artefacts(
+    execution_id: str, _: User = Depends(require_user)
+) -> ExecutionArtefactsRead:
+    """Live execution-manager artefact metadata for ``execution_id``.
+
+    Artefact *content* is not exposed by an execution-manager route (metadata
+    only: name, location, size, mime type, kind), so this returns the artefact
+    index so the UI can list what work products the execution produced.
+    """
+
+    artefacts: list[ExecutionArtefact] = []
+    settings = get_settings()
+    url = (
+        f"{settings.execution_manager_url.rstrip('/')}"
+        f"/executions/{execution_id}/artefacts"
+    )
+    data = _get_json(url, _headers("execution_manager_token"), "execution_manager_client")
+    if isinstance(data, dict):
+        raw_artefacts = data.get("artefacts") or []
+        for artefact in raw_artefacts:
+            if isinstance(artefact, dict):
+                artefacts.append(
+                    ExecutionArtefact(
+                        name=str(artefact.get("name", "")),
+                        location=str(artefact.get("location", "")),
+                        size_bytes=int(artefact.get("size_bytes", 0)),
+                        mime_type=artefact.get("mime_type"),
+                        kind=artefact.get("kind"),
+                    )
+                )
+    return ExecutionArtefactsRead(execution_id=execution_id, artefacts=artefacts)

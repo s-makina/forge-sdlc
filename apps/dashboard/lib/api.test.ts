@@ -9,6 +9,8 @@ import {
   getExecutions,
   getExecutionStatus,
   getExecutionRunStatus,
+  getExecutionLogs,
+  getExecutionArtefacts,
 } from "@/lib/api";
 
 describe("API client", () => {
@@ -28,5 +30,7 @@ describe("API client", () => {
     expect(typeof getExecutions).toBe("function");
     expect(typeof getExecutionStatus).toBe("function");
     expect(typeof getExecutionRunStatus).toBe("function");
+    expect(typeof getExecutionLogs).toBe("function");
+    expect(typeof getExecutionArtefacts).toBe("function");
   });
 });
