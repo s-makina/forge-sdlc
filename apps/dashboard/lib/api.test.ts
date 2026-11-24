@@ -6,6 +6,9 @@ import {
   getWorkflows,
   getWorkflowTemplates,
   getTasks,
+  getExecutions,
+  getExecutionStatus,
+  getExecutionRunStatus,
 } from "@/lib/api";
 
 describe("API client", () => {
@@ -19,5 +22,11 @@ describe("API client", () => {
     expect(typeof getWorkflows).toBe("function");
     expect(typeof getWorkflowTemplates).toBe("function");
     expect(typeof getTasks).toBe("function");
+  });
+
+  it("exposes the Phase 4.6 execution endpoints", () => {
+    expect(typeof getExecutions).toBe("function");
+    expect(typeof getExecutionStatus).toBe("function");
+    expect(typeof getExecutionRunStatus).toBe("function");
   });
 });

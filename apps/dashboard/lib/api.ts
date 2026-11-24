@@ -435,3 +435,30 @@ export const setTaskDependencies = (id: number, dependsOn: number[]) =>
   api<Task>(`/tasks/${id}/dependencies`, { method: "POST", body: { depends_on: dependsOn } });
 export const launchTask = (id: number) =>
   api<TaskLaunchResult>(`/tasks/${id}/execute`, { method: "POST" });
+
+// --- Executions (Phase 4.4/4.6) ---------------------------------------------
+
+export interface ExecutionSummary {
+  execution_id: string;
+  task_id: number;
+  task_title: string;
+  status: string;
+}
+
+export interface ExecutionStatus {
+  execution_id: string;
+  status: string;
+}
+
+export interface ExecutionRunStatus {
+  execution_id: string;
+  durable_status: string;
+}
+
+export const getExecutions = () => api<ListResponse<ExecutionSummary>>("/executions");
+export const getExecutionStatus = (execution_id: string) =>
+  api<ExecutionStatus>(`/executions/${encodeURIComponent(execution_id)}/status`);
+export const getExecutionRunStatus = (execution_id: string) =>
+  api<ExecutionRunStatus>(
+    `/executions/${encodeURIComponent(execution_id)}/run-status`
+  );

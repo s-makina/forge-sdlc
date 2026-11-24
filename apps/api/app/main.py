@@ -15,6 +15,7 @@ from app.routers import (
     approvals,
     audit,
     auth,
+    executions,
     health,
     models,
     projects,
@@ -69,6 +70,7 @@ def create_app() -> FastAPI:
     application.include_router(models.router, prefix=prefix)
     application.include_router(registry.router, prefix=prefix)
     application.include_router(tasks.router, prefix=prefix)
+    application.include_router(executions.router, prefix=prefix)
     application.include_router(workflows.router, prefix=prefix)
     application.include_router(approvals.router, prefix=prefix)
 
