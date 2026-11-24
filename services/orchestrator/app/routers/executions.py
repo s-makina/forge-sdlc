@@ -29,6 +29,11 @@ class ExecutionRunStatusResponse(BaseModel):
     durable_status: str
 
 
+class ExecutionStatusResponse(BaseModel):
+    execution_id: str
+    status: str
+
+
 @router.post("/executions/{execution_id}/start-run", response_model=ExecutionRunStatusResponse)
 def start_execution_run(
     execution_id: str, payload: ExecutionRunStartRequest
@@ -63,3 +68,16 @@ def execution_run_status(execution_id: str) -> ExecutionRunStatusResponse:
     container: Container = get_container()
     durable = container.orchestrator.execution_run_status(execution_id)
     return ExecutionRunStatusResponse(execution_id=execution_id, durable_status=durable)
+
+
+@router.get("/executions/{execution_id}/status", response_model=ExecutionStatusResponse)
+def execution_status(execution_id: str) -> ExecutionStatusResponse:
+    """Return the execution-manager pipeline status for ``execution_id``.
+
+    Reflects the pipeline lifecycle (created → ready → running →
+    succeeded/failed/cancelled) owned by the execution-manager. Complements
+    ``/run-status``, which reports the durable Temporal workflow status.
+    """
+    container: Container = get_container()
+    status = container.orchestrator.execution_status(execution_id)
+    return ExecutionStatusResponse(execution_id=execution_id, status=status)
