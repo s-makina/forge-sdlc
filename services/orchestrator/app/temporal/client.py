@@ -12,6 +12,8 @@ time.
 from __future__ import annotations
 
 import abc
+import asyncio
+import threading
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any
@@ -66,6 +68,10 @@ class SdkTemporalClient(TemporalClient):
     """Production Temporal client backed by the ``temporalio`` SDK.
 
     Lazily resolves the SDK so import-time doesn't require Temporal.
+
+    The temporalio SDK is async-native while this service layer is synchronous,
+    so the SDK client and every operation run on a single dedicated event loop
+    owned by the client (a lock serializes concurrent access to that loop).
     """
 
     def __init__(self, *, host: str, namespace: str, task_queue: str) -> None:
@@ -73,12 +79,22 @@ class SdkTemporalClient(TemporalClient):
         self._namespace = namespace
         self._task_queue = task_queue
         self._client: Any | None = None
+        self._loop = asyncio.new_event_loop()
+        self._lock = threading.Lock()
+
+    def _run(self, coro: Any) -> Any:
+        with self._lock:
+            return self._loop.run_until_complete(coro)
 
     def _resolve(self) -> Any:
         if self._client is None:
-            from temporalio.client import Client  # type: ignore[import-untyped]
+            with self._lock:
+                if self._client is None:
+                    from temporalio.client import Client  # type: ignore[import-untyped]
 
-            self._client = Client.connect(self._host, namespace=self._namespace)
+                    self._client = self._loop.run_until_complete(
+                        Client.connect(self._host, namespace=self._namespace)
+                    )
         return self._client
 
     def start_workflow(
@@ -91,17 +107,19 @@ class SdkTemporalClient(TemporalClient):
         timeout_seconds: int,
     ) -> WorkflowRun:
         client = self._resolve()
-        handle = client.start_workflow(
-            name,
-            *args,
-            id=workflow_id,
-            task_queue=task_queue,
-            execution_timeout=timedelta(seconds=timeout_seconds),
+        handle = self._run(
+            client.start_workflow(
+                name,
+                *args,
+                id=workflow_id,
+                task_queue=task_queue,
+                execution_timeout=timedelta(seconds=timeout_seconds),
+            )
         )
         return WorkflowRun(workflow_id=workflow_id, run_id=handle.result_run_id)
 
     def cancel_workflow(self, workflow_id: str) -> None:
-        self._resolve().get_workflow_handle(workflow_id).cancel()
+        self._run(self._resolve().get_workflow_handle(workflow_id).cancel())
 
     def workflow_status(self, workflow_id: str) -> str:
         """Return the durable status of a workflow ('' if it is unknown).
@@ -113,7 +131,7 @@ class SdkTemporalClient(TemporalClient):
         client = self._resolve()
         try:
             handle = client.get_workflow_handle(workflow_id)
-            description = handle.describe()
+            description = self._run(handle.describe())
         except Exception:  # noqa: BLE001 - unknown/not-yet-started workflow
             return ""
         return description.status.name.lower()
